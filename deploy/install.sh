@@ -121,7 +121,7 @@ fi
 # cached DB password. Safe to re-run; the line is overwritten in
 # place. This means a stale .env left over from a previous install
 # always gets healed.
-NEW_DB_URL="postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@localhost:${DB_PORT}/${DB_NAME}"
+NEW_DB_URL="postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@127.0.0.1:${DB_PORT}/${DB_NAME}?sslmode=disable"
 if grep -q "^DATABASE_URL=" "$APP_DIR/.env"; then
   # POSIX sed escape on the URL: ``,`` is a rare separator that won't
   # appear in any of these substrings.
@@ -129,7 +129,7 @@ if grep -q "^DATABASE_URL=" "$APP_DIR/.env"; then
 else
   printf '\nDATABASE_URL=%s\n' "$NEW_DB_URL" >> "$APP_DIR/.env"
 fi
-echo "  DATABASE_URL set to postgresql+asyncpg://${DB_USER}:<cached-password>@localhost:${DB_PORT}/${DB_NAME}"
+echo "  DATABASE_URL set to postgresql+asyncpg://${DB_USER}:<cached-password>@127.0.0.1:${DB_PORT}/${DB_NAME}?sslmode=disable"
 
 # Warn if SMTP fields are still blank — the notifier silently no-ops
 # without them and you'd find out only when nothing arrives.
