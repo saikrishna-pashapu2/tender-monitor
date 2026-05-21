@@ -1,0 +1,98 @@
+{# Sidebar filter form. Submits to the same URL via HTMX so the URL stays bookmarkable. #}
+<form id="filters"
+      hx-get="/"
+      hx-target="#results"
+      hx-push-url="true"
+      hx-trigger="change delay:200ms, submit"
+      hx-include="#filters, #search-input, #sort-select"
+      class="space-y-5">
+
+  <div>
+    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+      Country
+    </label>
+    <div class="space-y-1.5">
+      {% for code, label in [("KZ", "🇰🇿 Kazakhstan"), ("UZ", "🇺🇿 Uzbekistan")] %}
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox"
+                 name="country"
+                 value="{{ code }}"
+                 class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                 {% if code in (filters.country | map(attribute='value') | list) %}checked{% endif %} />
+          {{ label }}
+        </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  {# The Match filter is intentionally removed: the home list is
+     matched-only by product policy. The route still accepts
+     ``?matched=all`` / ``?matched=none`` for API consumers who need
+     the override, but the UI doesn't expose those. #}
+
+  <div>
+    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+      Group
+    </label>
+    <div class="space-y-1.5 text-sm">
+      {% for g in ["esg", "credit_rating"] %}
+        <label class="flex items-center gap-2">
+          <input type="checkbox" name="group" value="{{ g }}"
+                 class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                 {% if g in filters.group %}checked{% endif %} />
+          <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                       bg-{{ g|group_color }}-100 text-{{ g|group_color }}-800">
+            {{ g }}
+          </span>
+        </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div>
+    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+      Source
+    </label>
+    <div class="space-y-1.5 max-h-48 overflow-auto pr-1">
+      {% for source in sources %}
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox"
+                 name="source"
+                 value="{{ source.name }}"
+                 class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                 {% if source.name in filters.source %}checked{% endif %} />
+          <span class="truncate" title="{{ source.display_name }}">
+            {{ source.country.value|country_flag }} {{ source.display_name }}
+          </span>
+        </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 gap-2">
+    <div>
+      <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">From</label>
+      <input type="date"
+             name="from"
+             value="{{ filters.from_.date().isoformat() if filters.from_ else '' }}"
+             class="w-full text-sm rounded border-gray-300 focus:border-blue-500 focus:ring-blue-500" />
+    </div>
+    <div>
+      <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">To</label>
+      <input type="date"
+             name="to"
+             value="{{ filters.to.date().isoformat() if filters.to else '' }}"
+             class="w-full text-sm rounded border-gray-300 focus:border-blue-500 focus:ring-blue-500" />
+    </div>
+  </div>
+
+  <input type="hidden" name="per_page" value="{{ per_page }}" />
+
+  <div class="pt-2">
+    <a href="/"
+       class="block w-full text-center px-3 py-1.5 text-sm border border-gray-200 rounded
+              text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+      Clear all filters
+    </a>
+  </div>
+</form>

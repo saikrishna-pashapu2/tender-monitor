@@ -1,0 +1,21 @@
+New matched tender — {{ matched_groups|join(', ') }}
+
+{{ tender.title }}
+{% if tender.buyer_name %}Buyer: {{ tender.buyer_name }}
+{% endif %}Source: {{ tender.source_name }} ({{ tender.country.value }})
+
+Published: {% if tender.published_at %}{{ tender.published_at|pretty_scalar }}{% else %}—{% endif %}
+Deadline:  {% if tender.deadline_at %}{{ tender.deadline_at|pretty_scalar }}{% else %}—{% endif %}
+Value:     {% if tender.value_amount is not none %}{{ tender.value_amount|pretty_amount(tender.value_currency) }}{% else %}—{% endif %}
+
+Why this matched:
+{% for group in matched_groups %}
+{% set details = match_details.get(group) or {} %}
+{% set hits = (details.get('matched_phrases') or []) + (details.get('matched_tokens') or []) %}
+  - {{ group }}: {{ hits|join(', ') if hits else '(no phrase details)' }}
+{% endfor %}
+
+Open in Tender Monitor: {{ detail_url }}
+View on source:         {{ source_url }}
+
+You're receiving this because your email is subscribed to {{ matched_groups|join(', ') }} notifications.

@@ -1,0 +1,86 @@
+{
+  "id": 1220290,
+  "number": "1220290",
+  "nameRu": "Работы по капитальному ремонту нежилых зданий/сооружений/помещений (13 лотов)",
+  "nameKk": "Тұрғын емес ғимараттарды/құрылыстарды/үй-жайларды күрделі жөндеу жұмыстары (13 лот)",
+  "nameEn": null,
+  "acceptanceBeginDateTime": "2026-05-13T10:00:00+05:00",
+  "acceptanceEndDateTime": "2026-05-19T10:00:00+05:00",
+  "customer": {
+    "id": 10476878,
+    "identifier": "960840000483",
+    "nameRu": "Акционерное общество \"Алатау Жарық Компаниясы\"",
+    "nameKk": "АҚ \"Алатау Жарық Компаниясы",
+    "nameEn": "Акционерное общество \"Алатау Жарық Компаниясы\"",
+    "iin": null,
+    "bin": "960840000483",
+    "flagResident": null,
+    "companyType": null,
+    "phone": "+7 (727) 376-1973",
+    "email": "info@azhk.kz",
+    "site": null,
+    "legalAddress": {
+      "countryRu": "КАЗАХСТАН",
+      "katoFullNameRu": "г.Алматы, Бостандыкский район",
+      "street": "Манаса",
+      "building": "24 Б",
+      "flat": "401"
+    },
+    "checked": false
+  },
+  "organizer": {
+    "id": 10476878,
+    "identifier": "960840000483",
+    "nameRu": "Акционерное общество \"Алатау Жарық Компаниясы\"",
+    "nameKk": "АҚ \"Алатау Жарық Компаниясы",
+    "bin": "960840000483",
+    "legalAddress": {
+      "countryRu": "КАЗАХСТАН",
+      "katoFullNameRu": "г.Алматы, Бостандыкский район",
+      "street": "Манаса",
+      "building": "24 Б",
+      "flat": "401"
+    }
+  },
+  "phone": "+7 (727) 376-1939",
+  "extensionNumber": "3939",
+  "email": "luteuliyeva@azhk.kz",
+  "tenderType": "OTOU",
+  "sumTruNoNds": 34191869.47,
+  "simpleStatus": "ACTIVE",
+  "advertStatus": "PUBLISHED",
+  "documents": [
+    {
+      "documentCategory": "TENDER_DOCUMENTATION_ATTACHMENT",
+      "fileUid": "cef87f7e-1838-48e3-b331-324875fd773b-2026-minio",
+      "fileName": "Тендерная_документация_1198864_2026-04-03.pdf",
+      "contentType": "application/pdf"
+    },
+    {
+      "documentCategory": "ELECTRONIC_CONTRACT_PROJECT_ATTACHMENT",
+      "fileUid": "4083d98c-dfa9-4a32-8e35-00135d284220-2026-minio",
+      "fileName": "- Политика КСМ группы компаний АО Самрук-Энерго.pdf",
+      "contentType": "application/pdf"
+    },
+    {
+      "documentCategory": "ELECTRONIC_CONTRACT_PROJECT_ATTACHMENT",
+      "fileUid": "80f096e0-1db8-4552-85a0-5e3b660b7bbd-2026-minio",
+      "fileName": "- Реестра существенных экологических аспектов.pdf",
+      "contentType": "application/pdf"
+    },
+    {
+      "documentCategory": "ADVERT_ANNOUNCEMENT",
+      "fileUid": "b9cfe65e-58f0-40ff-a221-76ee0b0461bd-2026-minio",
+      "fileName": "объявление_о_закупке_1220290.pdf",
+      "contentType": "application/pdf"
+    }
+  ],
+  "advertRequirement": {
+    "id": 5555413584,
+    "advertId": 1220290,
+    "discussionBeginDateTime": null,
+    "discussionEndDateTime": null
+  },
+  "flagApplicationFiled": false,
+  "flagAdvertPublishedAfterFirstJanuary2021": true
+}

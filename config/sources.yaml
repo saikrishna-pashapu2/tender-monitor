@@ -1,0 +1,77 @@
+sources:
+  # zakup_unified is the JSON-API connector that hits the unified
+  # portal zakup.gov.kz. Historically misnamed "goszakup"; renamed in
+  # Prompt 12 once we discovered the real goszakup.gov.kz is a
+  # different (and richer) source served via HTML scraping. The new
+  # HTML-scraping connector below claims the goszakup name.
+  - name: zakup_unified
+    display_name: "Unified Procurement Portal of Kazakhstan (zakup.gov.kz)"
+    country: KZ
+    base_url: "https://zakup.gov.kz"
+    enabled: true
+    schedule_minutes: 30
+  - name: goszakup
+    display_name: "Public Procurement Web Portal (goszakup.gov.kz)"
+    country: KZ
+    base_url: "https://goszakup.gov.kz"
+    enabled: true
+    schedule_minutes: 30
+  # samruk_kazyna runs through a headless Chromium (Playwright) because
+  # the gateway requires a per-URL `tor` HMAC minted by the site's JS
+  # interceptor. Requires `playwright install chromium` once on the
+  # host. See src/tender_monitor/connectors/samruk_kazyna.py for the
+  # backstory and src/tender_monitor/connectors/_browser_samruk.py for
+  # the browser-driven mechanics.
+  - name: samruk_kazyna
+    display_name: "Samruk-Kazyna Electronic Procurement Portal"
+    country: KZ
+    base_url: "https://zakup.sk.kz"
+    enabled: true
+    schedule_minutes: 30
+  - name: mitwork
+    display_name: "Eurasian Electronic Portal (eep.mitwork.kz)"
+    country: KZ
+    base_url: "https://eep.mitwork.kz"
+    enabled: true
+    schedule_minutes: 30
+  - name: national_bank
+    display_name: "National Bank of Kazakhstan Procurement Portal"
+    country: KZ
+    base_url: "https://zakup.nationalbank.kz"
+    enabled: true
+    schedule_minutes: 30
+  - name: ets_tender
+    display_name: "ETS-Tender (commercial procurement, ets-tender.kz)"
+    country: KZ
+    base_url: "https://www.ets-tender.kz"
+    enabled: true
+    schedule_minutes: 30
+  - name: uzex_etender
+    display_name: "UZEX e-Tender platform (etender.uzex.uz)"
+    country: UZ
+    base_url: "https://etender.uzex.uz"
+    enabled: true
+    schedule_minutes: 30
+  - name: xt_xarid
+    display_name: "XT-Xarid Public Procurement (xt-xarid.uz)"
+    country: UZ
+    base_url: "https://xt-xarid.uz"
+    enabled: true
+    schedule_minutes: 30
+  # tendersinfo is a multi-country aggregator: one fetch_latest call
+  # pulls both KZ and UZ rows and assigns the per-tender country from
+  # the response payload. The country slot here is a placeholder so
+  # the source-row constraint is satisfied; the scheduler treats the
+  # per-tender country as authoritative for downstream queries.
+  - name: tendersinfo
+    display_name: "TendersInfo (commercial aggregator, KZ + UZ)"
+    country: KZ
+    base_url: "https://www.tendersinfo.com"
+    enabled: true
+    schedule_minutes: 60
+  - name: uzbekistan_tenders
+    display_name: "UzbekistanTenders.com (commercial aggregator, UZ)"
+    country: UZ
+    base_url: "https://www.uzbekistantenders.com"
+    enabled: true
+    schedule_minutes: 60

@@ -1,0 +1,60 @@
+{
+  "count": 2,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 91234561,
+      "announcement_id": 39385974,
+      "announcement_number": "39385974-1",
+      "lot_number": "1",
+      "name_ru": null,
+      "name_kk": null,
+      "description_ru": null,
+      "description_kk": null,
+      "total_price": 18500000.0,
+      "dumping_price": null,
+      "quantity": 1.0,
+      "organization_name": "ГУ \"Аппарат акима города\"",
+      "delivery_addresses": [
+        {"id": 5001, "name_ru": "г. Алматы, ул. Тестовая 1"}
+      ],
+      "purchase_method_name": "Открытый конкурс",
+      "purchase_method_id": 2,
+      "offer_start_date": "2026-05-08T02:12:18Z",
+      "offer_end_date": "2026-05-22T18:00:00Z",
+      "announcement_publish_date": "2026-05-08T02:12:18Z",
+      "status": {"id": 6, "name": "Опубликован", "is_active": true, "code": "published"},
+      "system": {"id": 1, "name": "GoszakupRK"},
+      "enstrus": [{"id": 7001, "code": "23.61.20", "name": "Изделия из бетона"}],
+      "external_id": 1001
+    },
+    {
+      "id": 91234562,
+      "announcement_id": 39385974,
+      "announcement_number": "39385974-2",
+      "lot_number": "2",
+      "name_ru": "Поставка цемента марки М500",
+      "name_kk": "M500 маркалы цемент жеткізу",
+      "description_ru": "Поставка цемента в мешках по 50 кг",
+      "description_kk": null,
+      "total_price": 4200000.0,
+      "dumping_price": null,
+      "quantity": 50.0,
+      "organization_name": "ГУ \"Аппарат акима города\"",
+      "delivery_addresses": [
+        {"id": 5002, "name_ru": "г. Алматы, склад №3"}
+      ],
+      "purchase_method_name": "Открытый конкурс",
+      "purchase_method_id": 2,
+      "offer_start_date": "2026-05-08T02:12:18Z",
+      "offer_end_date": "2026-05-22T18:00:00Z",
+      "announcement_publish_date": "2026-05-08T02:12:18Z",
+      "status": {"id": 6, "name": "Опубликован", "is_active": true, "code": "published"},
+      "system": {"id": 1, "name": "GoszakupRK"},
+      "enstrus": [{"id": 7002, "code": "23.51.12", "name": "Цемент"}],
+      "external_id": 1002
+    }
+  ],
+  "facets": {}
+}

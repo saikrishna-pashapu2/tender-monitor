@@ -1,0 +1,120 @@
+{
+  "result": [
+    {
+      "totalcost": 5099982101.04,
+      "status": "docs_objections",
+      "remain_time": -234,
+      "publicated_at": null,
+      "part_count": 0,
+      "name": "Тендер",
+      "meta": {
+        "lots": [
+          {"total_sum_lot": 0, "lot_id": 1, "item_count": 0}
+        ],
+        "good_maps": [
+          {"unit": "порц.", "totalcost_item": 748039005.0, "price": 103249.0, "name": "Услуги по аутсорсингу приготовления еды", "lot_id": 1, "id": "56.29.19.000-00004", "amount": 7245},
+          {"unit": "порц.", "totalcost_item": 748039005.0, "price": 103249.0, "name": "Услуги по аутсорсингу приготовления еды", "lot_id": 1, "id": "56.29.19.000-00004", "amount": 7245},
+          {"unit": "порц.", "totalcost_item": 748039005.0, "price": 103249.0, "name": "Услуги по аутсорсингу приготовления еды", "lot_id": 1, "id": "56.29.19.000-00004", "amount": 7245},
+          {"unit": "порц.", "totalcost_item": 748039005.0, "price": 103249.0, "name": "Услуги по аутсорсингу приготовления еды", "lot_id": 1, "id": "56.29.19.000-00004", "amount": 7245},
+          {"unit": "порц.", "totalcost_item": 748039005.0, "price": 103249.0, "name": "Услуги по аутсорсингу приготовления еды", "lot_id": 1, "id": "56.29.19.000-00004", "amount": 7245},
+          {"unit": "порц.", "totalcost_item": 747935756.0, "price": 103249.0, "name": "Услуги по аутсорсингу приготовления еды", "lot_id": 1, "id": "56.29.19.000-00004", "amount": 7244},
+          {"unit": "порц.", "totalcost_item": 102318867.10000001, "price": 103248.1, "name": "Услуги по аутсорсингу приготовления еды", "lot_id": 1, "id": "56.29.19.000-00004", "amount": 991},
+          {"unit": "порц.", "totalcost_item": 101906763.0, "price": 103249.0, "name": "Услуги по аутсорсингу приготовления еды", "lot_id": 1, "id": "56.29.19.000-00004", "amount": 987},
+          {"unit": "порц.", "totalcost_item": 101906763.0, "price": 103249.0, "name": "Услуги по аутсорсингу приготовления еды", "lot_id": 1, "id": "56.29.19.000-00004", "amount": 987},
+          {"unit": "порц.", "totalcost_item": 101905874.7, "price": 103248.1, "name": "Услуги по аутсорсингу приготовления еды", "lot_id": 1, "id": "56.29.19.000-00004", "amount": 987},
+          {"unit": "порц.", "totalcost_item": 101906289.24000001, "price": 103248.52, "name": "Услуги по аутсорсингу приготовления еды", "lot_id": 1, "id": "56.29.19.000-00004", "amount": 987},
+          {"unit": "порц.", "totalcost_item": 101906763.0, "price": 103249.0, "name": "Услуги по аутсорсингу приготовления еды", "lot_id": 1, "id": "56.29.19.000-00004", "amount": 987}
+        ],
+        "fin_src": [
+          "401310860262777073202054003",
+          "401310860262777073202337001"
+        ],
+        "company_name": "Республиканский специализированный научно-практический медицинский центр фтизиатрии и пульмонологии им. Ш. Алимова",
+        "company_inn": "200935928",
+        "area_path": [
+          {"path": "area.33.2137", "name": "город Ташкент"},
+          {"path": "area.33.2137.2138", "name": "Районы города Ташкента"},
+          {"path": "area.33.2137.2138.2146", "name": "Шайхантахурский район"},
+          {"path": "area.33", "name": "Республика Узбекистан"}
+        ]
+      },
+      "lot_count": 1,
+      "lang": "uz-UZ@cyrillic",
+      "id": 7393512,
+      "green": false,
+      "good_count": 12,
+      "docs_objections_remain_time": 91215,
+      "currency": "UZS",
+      "close_docs_objections_at": null,
+      "close_at": null
+    },
+    {
+      "totalcost": 4273500000.0,
+      "status": "docs_objections",
+      "remain_time": -1594,
+      "publicated_at": "2026-05-10T08:00:00",
+      "part_count": 0,
+      "name": "Тендер",
+      "meta": {
+        "lots": [
+          {"total_sum_lot": 0, "lot_id": 1, "item_count": 0}
+        ],
+        "good_maps": [
+          {"unit": "шт.", "totalcost_item": 2136750000.0, "price": 50000.0, "name": "Поставка офисной мебели", "lot_id": 1, "id": "31.01.12.000-00001", "amount": 42735},
+          {"unit": "шт.", "totalcost_item": 2136750000.0, "price": 50000.0, "name": "Поставка офисной мебели", "lot_id": 1, "id": "31.01.12.000-00001", "amount": 42735}
+        ],
+        "fin_src": ["401310860262777073202054003"],
+        "company_name": "АО \"Узбекинвест\"",
+        "company_inn": "201234567",
+        "area_path": [
+          {"path": "area.33.2137", "name": "город Ташкент"},
+          {"path": "area.33", "name": "Республика Узбекистан"}
+        ]
+      },
+      "lot_count": 1,
+      "lang": "ru-RU",
+      "id": 7393500,
+      "green": false,
+      "good_count": 2,
+      "docs_objections_remain_time": 50000,
+      "currency": "UZS",
+      "close_docs_objections_at": "2026-05-15T18:00:00",
+      "close_at": "2026-05-20T18:00:00"
+    },
+    {
+      "totalcost": 850000000.0,
+      "status": "docs_objections",
+      "remain_time": 100,
+      "publicated_at": "2026-05-12T09:30:00",
+      "part_count": 0,
+      "name": "Тендер",
+      "meta": {
+        "lots": [
+          {"total_sum_lot": 0, "lot_id": 1, "item_count": 0},
+          {"total_sum_lot": 0, "lot_id": 2, "item_count": 0}
+        ],
+        "good_maps": [
+          {"unit": "шт.", "totalcost_item": 400000000.0, "price": 100000.0, "name": "Поставка медицинского оборудования", "lot_id": 1, "id": "26.60.11.000-00001", "amount": 4000},
+          {"unit": "шт.", "totalcost_item": 450000000.0, "price": 90000.0, "name": "Расходные материалы для лабораторий", "lot_id": 2, "id": "20.59.11.000-00001", "amount": 5000},
+          {"unit": "шт.", "totalcost_item": 450000000.0, "price": 90000.0, "name": "Расходные материалы для лабораторий", "lot_id": 2, "id": "20.59.11.000-00001", "amount": 5000}
+        ],
+        "fin_src": [],
+        "company_name": "Министерство здравоохранения",
+        "company_inn": "203456789",
+        "area_path": [
+          {"path": "area.33", "name": "Республика Узбекистан"}
+        ]
+      },
+      "lot_count": 2,
+      "lang": "ru-RU",
+      "id": 7393488,
+      "green": true,
+      "good_count": 3,
+      "docs_objections_remain_time": 30000,
+      "currency": "UZS",
+      "close_docs_objections_at": "2026-05-14T18:00:00",
+      "close_at": "2026-05-25T18:00:00"
+    }
+  ],
+  "error": null
+}

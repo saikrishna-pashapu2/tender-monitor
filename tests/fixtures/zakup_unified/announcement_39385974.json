@@ -1,0 +1,36 @@
+{
+  "id": 39385974,
+  "external_id": 9876543,
+  "announcement_number": "39385974",
+  "name": "Закуп строительных материалов для благоустройства территории",
+  "publish_date": 1778370738,
+  "offer_start_date": 1778370738,
+  "offer_end_date": 1779580800,
+  "total_price": 22700000.0,
+  "status": {
+    "id": 6,
+    "name": "Опубликован",
+    "is_active": true,
+    "code": "published"
+  },
+  "purchase_method": {
+    "id": 2,
+    "name": "Открытый конкурс",
+    "name_kk": "Ашық конкурс",
+    "code": "open_tender"
+  },
+  "purchase_subject": {
+    "id": 1,
+    "code": "goods",
+    "name": "Товары",
+    "name_kk": "Тауарлар"
+  },
+  "organizer": {
+    "id": 100123,
+    "iin_bin": "950140000123",
+    "name": "ГУ \"Аппарат акима города Алматы\"",
+    "address": "г. Алматы, пр. Достык 85",
+    "organization_type": "Государственное учреждение"
+  },
+  "lot_count": 2
+}

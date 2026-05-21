@@ -1,0 +1,84 @@
+{% set deadline = tender.deadline_at|deadline_state %}
+{% set color = tender.source_name|source_color %}
+<article class="bg-white rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-md
+                transition p-4 sm:p-5 flex flex-col gap-3">
+  <div class="flex items-start justify-between gap-3">
+    <a href="/tenders/{{ tender.id }}" class="text-base sm:text-lg font-semibold text-gray-900 hover:text-blue-700 leading-snug">
+      {{ tender.title }}
+    </a>
+    <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                 bg-{{ color }}-100 text-{{ color }}-800"
+          title="{{ tender.source_name }}">
+      {{ tender.country.value|country_flag }} {{ tender.source_name }}
+    </span>
+  </div>
+
+  {% if tender.buyer_name %}
+    <p class="text-sm text-gray-600 truncate" title="{{ tender.buyer_name }}">
+      {{ tender.buyer_name }}
+    </p>
+  {% endif %}
+
+  {# Matched: group badge + actual phrases/tokens that fired #}
+  {% if tender.matched_groups %}
+    <div class="space-y-1.5">
+      {% for group in tender.matched_groups %}
+        {% set details = (tender.match_details or {}).get(group) or {} %}
+        {% set hits = (details.get('matched_phrases') or []) + (details.get('matched_tokens') or []) %}
+        <div class="flex flex-wrap items-baseline gap-2 text-xs">
+          <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded font-medium
+                       bg-{{ group|group_color }}-100 text-{{ group|group_color }}-800">
+            {{ group }}
+          </span>
+          {% if hits %}
+            <span class="text-gray-700">
+              {% for hit in hits %}
+                <span class="inline-block rounded bg-gray-100 px-1.5 py-0.5 mr-1 mb-0.5">{{ hit }}</span>
+              {% endfor %}
+            </span>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {# Metadata row: absolute dates are the primary fact, relative time / urgency
+     badge are the secondary cue. Always render all three cells for alignment. #}
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-2 text-sm pt-3 border-t border-gray-100">
+    <div>
+      <div class="text-[11px] uppercase tracking-wide text-gray-500">Published</div>
+      {% if tender.published_at %}
+        <div class="font-medium text-gray-900">{{ tender.published_at|pretty_scalar }}</div>
+        <div class="text-xs text-gray-500">{{ tender.published_at|timeago }}</div>
+      {% else %}
+        <div class="font-medium text-gray-400">—</div>
+      {% endif %}
+    </div>
+
+    <div>
+      <div class="text-[11px] uppercase tracking-wide text-gray-500">Deadline</div>
+      {% if tender.deadline_at %}
+        <div class="font-medium text-gray-900 {% if deadline.color == 'past' %}strike{% endif %}">
+          {{ tender.deadline_at|pretty_scalar }}
+        </div>
+        <div>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium
+                       {% if deadline.color == 'past' %}bg-gray-100 text-gray-500{% else %}bg-{{ deadline.color }}-100 text-{{ deadline.color }}-800{% endif %}">
+            {{ deadline.label }}
+          </span>
+        </div>
+      {% else %}
+        <div class="font-medium text-gray-400">—</div>
+      {% endif %}
+    </div>
+
+    <div>
+      <div class="text-[11px] uppercase tracking-wide text-gray-500">Value</div>
+      {% if tender.value_amount is not none %}
+        <div class="font-medium text-gray-900">{{ tender.value_amount|pretty_amount(tender.value_currency) }}</div>
+      {% else %}
+        <div class="font-medium text-gray-400">—</div>
+      {% endif %}
+    </div>
+  </div>
+</article>

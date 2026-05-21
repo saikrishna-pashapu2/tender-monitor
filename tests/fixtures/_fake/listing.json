@@ -1,0 +1,47 @@
+{
+  "items": [
+    {
+      "id": "fake-1",
+      "title_ru": "Тестовый тендер 1: услуги ESG-аудита",
+      "buyer": "Test Buyer 1",
+      "amount": 1000000,
+      "currency": "KZT",
+      "url": "https://example.test/1",
+      "deadline": "2026-06-01T12:00:00+00:00"
+    },
+    {
+      "id": "fake-2",
+      "title_ru": "Тестовый тендер 2: поставка ИТ-оборудования",
+      "buyer": "Test Buyer 2",
+      "amount": 5500000,
+      "currency": "KZT",
+      "url": "https://example.test/2",
+      "deadline": "2026-06-15T12:00:00+00:00"
+    },
+    {
+      "id": "fake-3",
+      "title_ru": "Тестовый тендер 3: консультационные услуги",
+      "buyer": "Test Buyer 3",
+      "amount": 250000,
+      "currency": "USD",
+      "url": "https://example.test/3",
+      "deadline": "2026-07-01T12:00:00+00:00"
+    },
+    {
+      "title_ru": "Тестовый тендер 4 без id (намеренно сломан)",
+      "buyer": "Test Buyer 4",
+      "amount": 750000,
+      "currency": "KZT",
+      "url": "https://example.test/4"
+    },
+    {
+      "id": "fake-5",
+      "title_ru": "Тестовый тендер 5: модернизация линии",
+      "buyer": "Test Buyer 5",
+      "amount": 12000000,
+      "currency": "UZS",
+      "url": "https://example.test/5",
+      "deadline": "2026-08-01T12:00:00+00:00"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Tenders · Tender Monitor{% endblock %}
+
+{% block content %}
+  <div class="flex items-start justify-between gap-3 mb-4">
+    <div>
+      <h1 class="text-xl sm:text-2xl font-semibold text-gray-900">Tenders</h1>
+      <p class="text-sm text-gray-500">Browse, filter and search every tender the scheduler has ingested.</p>
+    </div>
+    <button type="button"
+            class="lg:hidden inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-gray-200 bg-white"
+            onclick="document.getElementById('sidebar').classList.toggle('hidden')">
+      <i data-lucide="filter" class="w-4 h-4"></i> Filters
+    </button>
+  </div>
+
+  <div class="flex items-center gap-2 mb-4">
+    <div class="relative flex-1 max-w-xl">
+      <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+      <input id="search-input"
+             type="search"
+             name="q"
+             value="{{ filters.q or '' }}"
+             placeholder="Search title or buyer…"
+             hx-get="/"
+             hx-target="#results"
+             hx-push-url="true"
+             hx-trigger="keyup changed delay:300ms, search"
+             hx-include="#filters, #search-input, #sort-select"
+             class="w-full pl-9 pr-3 py-2 text-sm rounded border-gray-300 focus:border-blue-500 focus:ring-blue-500" />
+    </div>
+  </div>
+
+  <div class="flex flex-col lg:flex-row gap-6">
+    <aside id="sidebar"
+           class="hidden lg:block lg:w-72 lg:shrink-0">
+      <div class="bg-white border border-gray-200 rounded-lg p-4 lg:sticky lg:top-20">
+        {% include "_filters.html" %}
+      </div>
+    </aside>
+
+    <section id="results" class="flex-1 min-w-0">
+      {% include "tenders/_results.html" %}
+    </section>
+  </div>
+{% endblock %}

@@ -1,0 +1,30 @@
+[
+  {
+    "id": 1220290,
+    "number": "1220290",
+    "nameRu": "Работы по капитальному ремонту нежилых зданий/сооружений/помещений (13 лотов)",
+    "nameKk": "Тұрғын емес ғимараттарды/құрылыстарды/үй-жайларды күрделі жөндеу жұмыстары (13 лот)",
+    "nameEn": null,
+    "tenderType": "OTOU",
+    "sumTruNoNds": 34191869.47,
+    "acceptanceBeginDateTime": "2026-05-13T05:00:00Z",
+    "acceptanceEndDateTime": "2026-05-19T05:00:00Z",
+    "advertStatus": "PUBLISHED",
+    "flagApplicationFiled": false,
+    "flagNegotiationOutside": null
+  },
+  {
+    "id": 1220395,
+    "number": "1220395",
+    "nameRu": "ТМЦ (Батарея) среди ТП повтор",
+    "nameKk": "ТМҚ (Батарея) ТП арасында қайталау",
+    "nameEn": null,
+    "tenderType": "CPP",
+    "sumTruNoNds": 661059.00,
+    "acceptanceBeginDateTime": "2026-05-12T05:55:00Z",
+    "acceptanceEndDateTime": "2026-05-18T05:00:00Z",
+    "advertStatus": "PUBLISHED",
+    "flagApplicationFiled": false,
+    "flagNegotiationOutside": null
+  }
+]

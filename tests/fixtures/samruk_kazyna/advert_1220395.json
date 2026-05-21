@@ -1,0 +1,27 @@
+{
+  "id": 1220395,
+  "number": "1220395",
+  "nameRu": "ТМЦ (Батарея) среди ТП повтор",
+  "nameKk": "ТМҚ (Батарея) ТП арасында қайталау",
+  "nameEn": null,
+  "acceptanceBeginDateTime": "2026-05-12T10:55:00+05:00",
+  "acceptanceEndDateTime": "2026-05-18T10:00:00+05:00",
+  "customer": {
+    "id": 99999,
+    "identifier": "020540000884",
+    "nameRu": "АО \"Самрук-Қазына\" (фиктивный пример для теста)",
+    "nameKk": null,
+    "bin": "020540000884",
+    "legalAddress": null
+  },
+  "organizer": {
+    "id": 99999,
+    "nameRu": "АО \"Самрук-Қазына\" (фиктивный пример для теста)",
+    "bin": "020540000884"
+  },
+  "tenderType": "CPP",
+  "sumTruNoNds": 661059.0,
+  "simpleStatus": "ACTIVE",
+  "advertStatus": "PUBLISHED",
+  "documents": []
+}
