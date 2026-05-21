@@ -92,6 +92,16 @@ sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" 
 # pgcrypto is required for gen_random_uuid() server defaults.
 sudo -u postgres psql -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;" >/dev/null
 
+# Detect the actual listening port. On Debian, if 5432 is already taken
+# (eg. by Docker), initdb silently picks 5433. Hard-coding 5432 in the
+# DATABASE_URL leaves us unable to connect even when everything else is
+# correct — exactly the bug we hit on Pi setup.
+DB_PORT="$(sudo -u postgres psql -tAc 'SHOW port' | tr -d '[:space:]')"
+if [[ -z "$DB_PORT" ]]; then
+  DB_PORT=5432
+fi
+echo "  postgres listening on port $DB_PORT"
+
 # ----------------------------------------------------------------------
 echo "[4/7] venv + pip install"
 if [[ ! -d "$VENV_DIR" ]]; then
@@ -111,7 +121,7 @@ fi
 # cached DB password. Safe to re-run; the line is overwritten in
 # place. This means a stale .env left over from a previous install
 # always gets healed.
-NEW_DB_URL="postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}"
+NEW_DB_URL="postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@localhost:${DB_PORT}/${DB_NAME}"
 if grep -q "^DATABASE_URL=" "$APP_DIR/.env"; then
   # POSIX sed escape on the URL: ``,`` is a rare separator that won't
   # appear in any of these substrings.
@@ -119,7 +129,7 @@ if grep -q "^DATABASE_URL=" "$APP_DIR/.env"; then
 else
   printf '\nDATABASE_URL=%s\n' "$NEW_DB_URL" >> "$APP_DIR/.env"
 fi
-echo "  DATABASE_URL set to postgresql+asyncpg://${DB_USER}:<cached-password>@localhost:5432/${DB_NAME}"
+echo "  DATABASE_URL set to postgresql+asyncpg://${DB_USER}:<cached-password>@localhost:${DB_PORT}/${DB_NAME}"
 
 # Warn if SMTP fields are still blank — the notifier silently no-ops
 # without them and you'd find out only when nothing arrives.
