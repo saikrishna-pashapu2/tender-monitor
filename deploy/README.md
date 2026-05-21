@@ -41,7 +41,7 @@ sudo bash /opt/tender-monitor/app/deploy/install.sh
 # 3. Edit secrets the installer stubbed for you
 sudo -e /opt/tender-monitor/app/.env
 #   - DATABASE_URL (already filled in if the installer generated a password;
-#     local Pi installs use 127.0.0.1 + sslmode=disable on purpose)
+#     local Pi installs use 127.0.0.1 + ssl=disable on purpose)
 #   - SMTP_HOST / SMTP_USER / SMTP_PASSWORD / SMTP_FROM  (Gmail app password)
 #   - APP_BASE_URL = http://<your-tailscale-hostname>:8000
 
