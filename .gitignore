@@ -47,3 +47,6 @@ logs/
 # (raw HTML/JS snapshots, ad-hoc Playwright PoCs, etc.). Useful on
 # disk while debugging a source but not part of the codebase.
 scratch/
+
+# Claude Code harness runtime state (lock files, project memory cache).
+.claude/
