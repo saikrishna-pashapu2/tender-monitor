@@ -60,14 +60,32 @@ chown -R "$APP_USER:$APP_USER" "$(dirname "$APP_DIR")"
 
 # ----------------------------------------------------------------------
 echo "[3/7] postgres: role + database"
-sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'" | grep -q 1 || {
-  # Generate a password if one wasn't supplied via DB_PASSWORD env.
-  if [[ -z "${DB_PASSWORD:-}" ]]; then
-    DB_PASSWORD="$(openssl rand -hex 16)"
-    echo "  generated db password (write it down): $DB_PASSWORD"
-  fi
+
+# Persist the generated password in a root-owned cache file so re-runs
+# always know what it is — the original bug was a brace-group scope
+# issue where DB_PASSWORD could be empty by the time the .env patcher
+# tried to use it, leaving DATABASE_URL with the .env.example
+# placeholder. Caching to disk makes both the re-run and the .env
+# patch fully deterministic.
+DB_PW_CACHE="${DB_PW_CACHE:-/etc/tender-monitor.dbpw}"
+if [[ -z "${DB_PASSWORD:-}" && -s "$DB_PW_CACHE" ]]; then
+  DB_PASSWORD="$(cat "$DB_PW_CACHE")"
+fi
+if [[ -z "${DB_PASSWORD:-}" ]]; then
+  DB_PASSWORD="$(openssl rand -hex 16)"
+  echo "  generated db password (cached at $DB_PW_CACHE): $DB_PASSWORD"
+fi
+umask 077
+printf '%s' "$DB_PASSWORD" > "$DB_PW_CACHE"
+chmod 600 "$DB_PW_CACHE"
+
+if sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'" | grep -q 1; then
+  # Role exists — make sure its password matches the cache. Idempotent.
+  sudo -u postgres psql -c "ALTER USER $DB_USER WITH PASSWORD '$DB_PASSWORD'" >/dev/null
+else
   sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASSWORD'"
-}
+fi
+
 sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" | grep -q 1 || \
   sudo -u postgres createdb -O "$DB_USER" "$DB_NAME"
 
@@ -86,13 +104,30 @@ sudo -u "$APP_USER" "$VENV_DIR/bin/pip" install -e "$APP_DIR"
 echo "[5/7] .env (chmod 600, owned by $APP_USER)"
 if [[ ! -f "$APP_DIR/.env" ]]; then
   cp "$APP_DIR/.env.example" "$APP_DIR/.env"
-  if [[ -n "${DB_PASSWORD:-}" ]]; then
-    # Patch the DATABASE_URL with the generated password so the operator
-    # doesn't have to remember it.
-    sed -i "s#postgresql+asyncpg://[^@]*@localhost#postgresql+asyncpg://$DB_USER:$DB_PASSWORD@localhost#" "$APP_DIR/.env"
-  fi
-  echo "  wrote $APP_DIR/.env from .env.example — EDIT IT NOW to set SMTP_*, APP_BASE_URL, etc."
+  echo "  wrote $APP_DIR/.env from .env.example"
 fi
+
+# Always force DATABASE_URL to the canonical value built from the
+# cached DB password. Safe to re-run; the line is overwritten in
+# place. This means a stale .env left over from a previous install
+# always gets healed.
+NEW_DB_URL="postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}"
+if grep -q "^DATABASE_URL=" "$APP_DIR/.env"; then
+  # POSIX sed escape on the URL: ``,`` is a rare separator that won't
+  # appear in any of these substrings.
+  sed -i "s,^DATABASE_URL=.*,DATABASE_URL=${NEW_DB_URL}," "$APP_DIR/.env"
+else
+  printf '\nDATABASE_URL=%s\n' "$NEW_DB_URL" >> "$APP_DIR/.env"
+fi
+echo "  DATABASE_URL set to postgresql+asyncpg://${DB_USER}:<cached-password>@localhost:5432/${DB_NAME}"
+
+# Warn if SMTP fields are still blank — the notifier silently no-ops
+# without them and you'd find out only when nothing arrives.
+if grep -q '^SMTP_HOST=\s*$' "$APP_DIR/.env" || grep -q '^SMTP_PASSWORD=\s*$' "$APP_DIR/.env"; then
+  echo "  ⚠ SMTP_HOST or SMTP_PASSWORD is blank in $APP_DIR/.env"
+  echo "    The web UI and scheduler will run fine; the notifier will fail to send."
+fi
+
 chown "$APP_USER:$APP_USER" "$APP_DIR/.env"
 chmod 600 "$APP_DIR/.env"
 
