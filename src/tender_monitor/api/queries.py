@@ -160,7 +160,13 @@ def _apply_sort(stmt: _SelectT, sort: str) -> _SelectT:
         return stmt.order_by(Tender.value_amount.desc().nulls_last(), Tender.id.asc())
     if sort == "value_asc":
         return stmt.order_by(Tender.value_amount.asc().nulls_last(), Tender.id.asc())
-    return stmt.order_by(Tender.first_seen_at.desc().nulls_last(), Tender.id.asc())
+    # "Newest first" in the UI refers to the tender's upstream publish
+    # time, not when our scheduler first ingested the row.
+    return stmt.order_by(
+        Tender.published_at.desc().nulls_last(),
+        Tender.first_seen_at.desc().nulls_last(),
+        Tender.id.asc(),
+    )
 
 
 def normalize_sort(sort: str | None) -> SortKey:

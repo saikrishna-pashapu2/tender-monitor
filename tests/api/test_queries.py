@@ -148,8 +148,12 @@ async def test_list_tenders_date_range_filter(seeded_session: AsyncSession) -> N
 
 async def test_list_tenders_sort_newest(seeded_session: AsyncSession) -> None:
     result = await list_tenders(seeded_session, TenderFilters(), "newest", 1, 25)
-    seen = [row.first_seen_at for row in result.rows]
-    assert seen == sorted(seen, reverse=True)
+    published = [row.published_at for row in result.rows]
+    non_null = [p for p in published if p is not None]
+    assert non_null == sorted(non_null, reverse=True)
+    null_indexes = [i for i, p in enumerate(published) if p is None]
+    if null_indexes:
+        assert min(null_indexes) == len(non_null)
 
 
 async def test_list_tenders_sort_deadline(seeded_session: AsyncSession) -> None:
