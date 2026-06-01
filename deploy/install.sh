@@ -119,8 +119,7 @@ fi
 
 # Always force DATABASE_URL to the canonical value built from the
 # cached DB password. Safe to re-run; the line is overwritten in
-# place. This means a stale .env left over from a previous install
-# always gets healed.
+# place. This means a stale .env left over from a previous install# always gets healed.
 NEW_DB_URL="postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@127.0.0.1:${DB_PORT}/${DB_NAME}?ssl=disable"
 if grep -q "^DATABASE_URL=" "$APP_DIR/.env"; then
   # POSIX sed escape on the URL: ``,`` is a rare separator that won't

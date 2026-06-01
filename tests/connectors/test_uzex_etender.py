@@ -29,12 +29,21 @@ from tender_monitor.connectors.uzex_etender import (
 from tender_monitor.core.enums import Country, Language, TenderStatus
 
 LISTING_PATH = "/api/common/TradeList"
+DEALS_PATH = "/api/common/DealsList"
+NOT_DEALED_PATH = "/api/common/NotDealedList"
+DETAIL_PATH_PREFIX = "/api/common/GetTrade/"
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "uzex_etender"
 
 
 def _read_fixture() -> list[dict[str, Any]]:
     raw = (FIXTURES_DIR / "listing.json").read_text(encoding="utf-8")
     data: list[dict[str, Any]] = json.loads(raw)
+    return data
+
+
+def _read_detail_fixture(name: str) -> dict[str, Any]:
+    raw = (FIXTURES_DIR / name).read_text(encoding="utf-8")
+    data: dict[str, Any] = json.loads(raw)
     return data
 
 
@@ -50,7 +59,22 @@ def _client_factory(
 
 
 def _is_listing(request: httpx.Request) -> bool:
+    return (
+        request.url.path in {LISTING_PATH, DEALS_PATH, NOT_DEALED_PATH}
+        and request.method == "POST"
+    )
+
+
+def _is_active_listing(request: httpx.Request) -> bool:
     return request.url.path == LISTING_PATH and request.method == "POST"
+
+
+def _is_detail(request: httpx.Request) -> bool:
+    return request.url.path.startswith(DETAIL_PATH_PREFIX) and request.method == "GET"
+
+
+def _detail_lot_id(request: httpx.Request) -> int:
+    return int(request.url.path[len(DETAIL_PATH_PREFIX) :].split("/", 1)[0])
 
 
 def _body_json(request: httpx.Request) -> dict[str, Any]:
@@ -157,6 +181,9 @@ def _make_handler(
     *,
     pages: list[list[dict[str, Any]]],
     captured: list[httpx.Request],
+    details_by_id: dict[int, dict[str, Any]] | None = None,
+    deals_pages: list[list[dict[str, Any]]] | None = None,
+    not_dealed_pages: list[list[dict[str, Any]]] | None = None,
 ) -> Callable[[httpx.Request], httpx.Response]:
     """Return a handler that serves successive listing pages in order.
 
@@ -165,17 +192,33 @@ def _make_handler(
     asking for the right offsets.
     """
 
-    pages_by_from: dict[int, list[dict[str, Any]]] = {}
-    for idx, page in enumerate(pages):
-        pages_by_from[idx * UzexEtenderConnector.PAGE_SIZE + 1] = page
+    def _index_pages(
+        stream_pages: list[list[dict[str, Any]]],
+    ) -> dict[int, list[dict[str, Any]]]:
+        pages_by_from: dict[int, list[dict[str, Any]]] = {}
+        for idx, page in enumerate(stream_pages):
+            pages_by_from[idx * UzexEtenderConnector.PAGE_SIZE + 1] = page
+        return pages_by_from
+
+    pages_by_path: dict[str, dict[int, list[dict[str, Any]]]] = {
+        LISTING_PATH: _index_pages(pages),
+        DEALS_PATH: _index_pages(deals_pages or [[]]),
+        NOT_DEALED_PATH: _index_pages(not_dealed_pages or [[]]),
+    }
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured.append(request)
         if not _is_listing(request):
+            if _is_detail(request):
+                lot_id = _detail_lot_id(request)
+                detail = (details_by_id or {}).get(lot_id)
+                if detail is None:
+                    return httpx.Response(404)
+                return httpx.Response(200, json=detail)
             return httpx.Response(404)
         body = _body_json(request)
         from_offset = int(body.get("From", 0))
-        page = pages_by_from.get(from_offset, [])
+        page = pages_by_path.get(request.url.path, {}).get(from_offset, [])
         return httpx.Response(200, json=page)
 
     return handler
@@ -218,7 +261,7 @@ async def test_fetch_latest_pagination() -> None:
 
     result = await connector.fetch_latest()
 
-    listing_calls = [r for r in captured if _is_listing(r)]
+    listing_calls = [r for r in captured if _is_active_listing(r)]
     # Page 2 was a short page (30 < 50), so the connector breaks
     # before requesting page 3. Two POSTs total.
     assert len(listing_calls) == 2
@@ -243,7 +286,7 @@ async def test_fetch_latest_post_body_shape() -> None:
 
     await connector.fetch_latest()
 
-    listing_calls = [r for r in captured if _is_listing(r)]
+    listing_calls = [r for r in captured if _is_active_listing(r)]
     assert len(listing_calls) >= 2
     body1 = _body_json(listing_calls[0])
     body2 = _body_json(listing_calls[1])
@@ -259,7 +302,7 @@ async def test_fetch_latest_no_validation_header() -> None:
 
     await connector.fetch_latest()
 
-    listing_calls = [r for r in captured if _is_listing(r)]
+    listing_calls = [r for r in captured if _is_active_listing(r)]
     assert listing_calls, "expected at least one listing request"
     # The v1 contract: do NOT send the captured validation token.
     # If the live API rejects empty-validation we'll find out from the
@@ -299,7 +342,7 @@ async def test_fetch_latest_since_filter_after_pagination() -> None:
     since = datetime(2026, 5, 1, 0, 0, tzinfo=UTC)
     result = await connector.fetch_latest(since=since)
 
-    listing_calls = [r for r in captured if _is_listing(r)]
+    listing_calls = [r for r in captured if _is_active_listing(r)]
     # CRITICAL: page 2 was requested even though every item on page 1
     # was older than `since`. This is the non-monotone-since pin.
     pages_requested = [_body_json(r).get("From") for r in listing_calls]
@@ -311,6 +354,117 @@ async def test_fetch_latest_since_filter_after_pagination() -> None:
         t.published_at is not None and t.published_at >= since
         for t in result.tenders
     )
+
+
+async def test_fetch_latest_enriches_with_detail_payload() -> None:
+    item = copy.deepcopy(_read_fixture()[0])
+    item["id"] = 482604
+    item["name"] = "Закупка консалтинговых услуг"
+    item["seller_name"] = "Listing Seller"
+    item["seller_tin"] = "123456789"
+    item["start_date"] = "2026-05-15T12:36:31"
+    item["end_date"] = "2026-05-22T12:36:31"
+    item["cost"] = 100.0
+    item["currency_codeabc"] = "UZS"
+
+    detail = _read_detail_fixture("detail_482604.json")
+
+    captured: list[httpx.Request] = []
+    handler = _make_handler(
+        pages=[[item]],
+        captured=captured,
+        details_by_id={482604: detail},
+    )
+    transport = httpx.MockTransport(handler)
+    connector = UzexEtenderConnector(http_client_factory=_client_factory(transport))
+
+    result = await connector.fetch_latest()
+
+    assert result.raw_item_count == 1
+    assert len(result.tenders) == 1
+    tender = result.tenders[0]
+    assert tender.buyer_name == "АО O`ZBEKTELEKOM"
+    assert tender.buyer_external_id == "203366731"
+    assert tender.value_amount == Decimal("2476000000.0")
+    assert tender.status is TenderStatus.closed
+    assert tender.raw_json["_detail"]["id"] == 482604
+    assert (
+        tender.raw_json["_parsed_detail"]["budget_products"][0]["Description"]
+        .lower()
+        .find("dekarbonizatsiya")
+        >= 0
+    )
+    assert "iqlim strategiyasini" in (
+        tender.raw_json["_lots"][0]["description_ru"] or ""
+    ).lower()
+
+
+async def test_fetch_latest_fetches_detail_only_for_in_window_items() -> None:
+    template = _read_fixture()[0]
+
+    old_item = copy.deepcopy(template)
+    old_item["id"] = 600001
+    old_item["start_date"] = "2026-04-01T10:00:00"
+
+    new_item = copy.deepcopy(template)
+    new_item["id"] = 600002
+    new_item["start_date"] = "2026-06-01T10:00:00"
+
+    detail = _read_detail_fixture("detail_484751.json")
+    captured: list[httpx.Request] = []
+    handler = _make_handler(
+        pages=[[old_item, new_item]],
+        captured=captured,
+        details_by_id={600001: detail, 600002: detail},
+    )
+    transport = httpx.MockTransport(handler)
+    connector = UzexEtenderConnector(http_client_factory=_client_factory(transport))
+
+    since = datetime(2026, 5, 1, 0, 0, tzinfo=UTC)
+    result = await connector.fetch_latest(since=since)
+
+    detail_calls = [r for r in captured if _is_detail(r)]
+    assert result.raw_item_count == 1
+    assert len(detail_calls) == 1
+    assert _detail_lot_id(detail_calls[0]) == 600002
+
+
+async def test_fetch_latest_includes_recent_not_dealed_items() -> None:
+    active_item = copy.deepcopy(_read_fixture()[0])
+    active_item["id"] = 700001
+    active_item["start_date"] = "2026-05-20T10:00:00"
+
+    failed_item = {
+        "trade_id": 700002,
+        "display_no": "26110012700002",
+        "start_date": "2026-05-01T08:00:00",
+        "end_date": "2026-05-22T17:44:38",
+        "category_name": "Iqlim strategiyasi bo'yicha xizmatlar",
+        "start_cost": 1000000.0,
+        "customer_name": "Test Customer",
+        "customer_inn": "123456789",
+        "status_id": 12,
+        "status_name": "Торг не состоялся",
+    }
+
+    detail = _read_detail_fixture("detail_482604.json")
+    captured: list[httpx.Request] = []
+    handler = _make_handler(
+        pages=[[active_item]],
+        not_dealed_pages=[[failed_item]],
+        captured=captured,
+        details_by_id={700001: detail, 700002: detail},
+    )
+    transport = httpx.MockTransport(handler)
+    connector = UzexEtenderConnector(http_client_factory=_client_factory(transport))
+
+    since = datetime(2026, 5, 21, 0, 0, tzinfo=UTC)
+    result = await connector.fetch_latest(since=since)
+
+    assert result.raw_item_count == 2
+    assert {t.external_id for t in result.tenders} == {"700001", "700002"}
+    failed_tender = next(t for t in result.tenders if t.external_id == "700002")
+    assert failed_tender.status is TenderStatus.cancelled
 
 
 async def test_fetch_latest_500_raises_fetch_error() -> None:

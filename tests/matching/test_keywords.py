@@ -193,6 +193,33 @@ def test_match_tender_uses_buyer_name(real_config: KeywordsConfig) -> None:
     assert "credit_rating" in result.matched_groups
 
 
+def test_match_tender_walks_nested_detail_payload(
+    real_config: KeywordsConfig,
+) -> None:
+    tender = _make_tender(
+        title="Закупка консалтинговых услуг",
+        raw_json={
+            "_detail": {
+                "technical_description": (
+                    "Iqlim strategiyasini ishlab chiqish hamda "
+                    "dekarbonizatsiya rejasini tayyorlash"
+                ),
+                "js_fields": [
+                    {
+                        "label": "Mutaxassislar haqida ma'lumot",
+                        "description": (
+                            "Loyiha menejeri CFA ESG Investing "
+                            "sertifikatiga ega bo‘lishi lozim."
+                        ),
+                    }
+                ],
+            }
+        },
+    )
+    result = match_tender(tender, real_config)
+    assert "esg" in result.matched_groups
+
+
 # ---------------------------------------------------------------------------
 # Result serialization
 # ---------------------------------------------------------------------------

@@ -1,0 +1,37 @@
+{
+  "id": 482604,
+  "display_no": "26120012482604",
+  "start_date": "2026-05-15T12:36:31",
+  "end_date": "2026-05-22T12:36:31",
+  "start_cost": 2476000000.0,
+  "status_id": 6,
+  "status_name": "Таклифларни кабул килиш муддати тугатилди",
+  "customer_name": "АО O`ZBEKTELEKOM",
+  "customer_tin": "203366731",
+  "currency_codeabc": "UZS",
+  "technical_description": "“O‘zbektelekom” AK ehtiyojlari uchun iqlim strategiyasini ishlab chiqish hamda dekarbonizatsiya rejasini tayyorlash xizmatlarini xarid qilish",
+  "addon_description": "“O‘zbektelekom” AK ehtiyojlari uchun iqlim strategiyasini ishlab chiqish hamda dekarbonizatsiya rejasini tayyorlash xizmatlarini xarid qilish",
+  "budget_products": "[{\"Id\":1864914,\"Description\":\"“O‘zbektelekom” AK ehtiyojlari uchun iqlim strategiyasini ishlab chiqish hamda dekarbonizatsiya rejasini tayyorlash xizmatlarini xarid qilish\\r\\n\"}]",
+  "contacts": "[{\"Job_title\":\"Xaridlar bo‘yicha mutaxassis\",\"Fullname\":\"X. Ablatayeva\"}]",
+  "languages": "[{\"Id\":1,\"Name\":\"Русский\"},{\"Id\":2,\"Name\":\"Узбекский\"}]",
+  "js_fields": [
+    {
+      "id": 2610479,
+      "label": "Ish tajribasi haqida ma'lumot",
+      "description": "Ishtirokchi barqaror rivojlanish bo‘yicha hisobotlarni yoki Global Reporting Initiative (GRI) standartlari va/yoki boshqa qo‘llaniladigan xalqaro moliyaviy bo‘lmagan hisobot standartlariga muvofiq tayyorlash va tasdiqlash bo‘yicha tajribaga ega bo‘lishi shart."
+    },
+    {
+      "id": 2610480,
+      "label": "Mutaxassislar haqida ma'lumot",
+      "description": "Loyiha menejeri CFA ESG Investing sertifikatiga ega bo‘lishi lozim. SASB standartlari bo‘yicha mutaxassis IFRS Foundation tomonidan berilgan IFRS Fundamentals of Sustainability Accounting credential hamda ACCA sertifikatiga ega bo‘lishi lozim."
+    }
+  ],
+  "fields": "[{\"Id\":2610479,\"Label\":\"Ish tajribasi haqida ma'lumot\",\"Description\":\"Ishtirokchi barqaror rivojlanish bo‘yicha hisobotlarni yoki Global Reporting Initiative (GRI) standartlari va/yoki boshqa qo‘llaniladigan xalqaro moliyaviy bo‘lmagan hisobot standartlariga muvofiq tayyorlash va tasdiqlash bo‘yicha tajribaga ega bo‘lishi shart.\"}]",
+  "js_qualification_fields": [
+    {
+      "id": 906009,
+      "name": "Коррупция кўринишларига йўл қўймаслик бўйича ариза."
+    }
+  ],
+  "qualification_fields": "[{\"Id\":906009,\"Name\":\"Коррупция кўринишларига йўл қўймаслик бўйича ариза.\"}]"
+}

@@ -3,27 +3,31 @@
 First non-Kazakhstan source. Shape notes that differ from the KZ
 connectors:
 
-- POST-JSON listing similar to zakup_unified, but cleaner: every
-  field we need for v1 (title, buyer name + TIN, dates, amount,
-  currency, region) is in the listing payload. NO detail-page fetch.
+- POST-JSON listing similar to zakup_unified. The listing still gives
+  us stable row discovery, but we now enrich each in-window listing
+  item with ``GET /api/common/GetTrade/{id}/0`` so matching can see
+  the lot's technical description, product descriptions, criteria, and
+  other detail-only fields.
 - ONE TENDER ROW = ONE LISTING ITEM. ``external_id`` is
-  ``str(item["id"])``.
+  ``str(item["id"] or item["trade_id"])``.
 - Pagination uses ``From``/``To`` 1-indexed offsets in the body, not
   page numbers: page 1 -> From=1,To=50; page 2 -> From=51,To=100.
-- Default order is roughly id-descending (newest-created first), but
-  ``start_date`` ordering is NOT strictly monotone -- a re-announced
-  tender can carry an older ``start_date`` than its position in the
-  listing implies. We therefore paginate to MAX_PAGES unconditionally
-  and apply the ``since`` filter post-pagination. Early termination
-  on the first older-than-since hit would drop legitimately new but
-  later-positioned items.
+- Discovery now unions three streams: active tenders, failed tenders,
+  and completed deals. That broadens coverage for lots that leave the
+  active list before we ingest them.
+- Order inside a stream is roughly id-descending, but date ordering is
+  NOT strictly monotone. We therefore paginate to the per-stream page
+  cap unconditionally and apply the ``since`` filter post-pagination.
+  Early termination on the first older-than-since hit would drop
+  legitimately new but later-positioned items.
 - Dates are naive ISO ``YYYY-MM-DDTHH:MM:SS`` with no timezone
   marker. Treat them as Asia/Tashkent local (UTC+5), localize, then
   convert to UTC for storage.
-- Currency is UZS (Uzbek sum). The listing carries the ISO alpha
-  code as ``currency_codeabc`` so we use that verbatim.
-- TypeId=1 filters to active tenders per the DevTools capture, so
-  every ingested row is implicitly ``TenderStatus.open``.
+- Currency is UZS (Uzbek sum). The detail payload carries the ISO
+  alpha code as ``currency_codeabc`` so we use that when available.
+- ``TypeId=1`` is the lane this connector currently follows for UZEX
+  tender/best-offer procurement. Status is derived from the detail or
+  ended-stream row rather than hardcoded open.
 - The DevTools capture included a ``validation`` header that looks
   like a signed token. v1 deliberately omits it; if the live API
   rejects empty-validation, the live acceptance run catches that and
@@ -37,6 +41,7 @@ connectors:
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, ClassVar
@@ -89,13 +94,37 @@ def parse_naive_tashkent(text: str | None) -> datetime | None:
 class UzexEtenderConnector(Connector):
     source_name: ClassVar[str] = "uzex_etender"
 
-    LISTING_URL: ClassVar[str] = (
+    ACTIVE_LISTING_URL: ClassVar[str] = (
         "https://apietender.uzex.uz/api/common/TradeList"
     )
+    DEALS_LISTING_URL: ClassVar[str] = (
+        "https://apietender.uzex.uz/api/common/DealsList"
+    )
+    NOT_DEALED_LISTING_URL: ClassVar[str] = (
+        "https://apietender.uzex.uz/api/common/NotDealedList"
+    )
+    DETAIL_URL_TEMPLATE: ClassVar[str] = (
+        "https://apietender.uzex.uz/api/common/GetTrade/{lot_id}/0"
+    )
     PAGE_SIZE: ClassVar[int] = 50
-    MAX_PAGES: ClassVar[int] = 5
+    ACTIVE_MAX_PAGES: ClassVar[int] = 15
+    ENDED_MAX_PAGES: ClassVar[int] = 5
+    LISTING_STREAMS: ClassVar[
+        tuple[tuple[str, str, int], ...]
+    ] = (
+        ("active", ACTIVE_LISTING_URL, ACTIVE_MAX_PAGES),
+        ("not_dealed", NOT_DEALED_LISTING_URL, ENDED_MAX_PAGES),
+        ("deals", DEALS_LISTING_URL, ENDED_MAX_PAGES),
+    )
+    EMBEDDED_JSON_FIELDS: ClassVar[tuple[str, ...]] = (
+        "budget_products",
+        "contacts",
+        "fields",
+        "languages",
+        "qualification_fields",
+    )
     LISTING_BODY_TEMPLATE: ClassVar[dict[str, int]] = {
-        "TypeId": 1,  # active tenders
+        "TypeId": 1,
         "System_Id": 0,  # all systems
     }
 
@@ -121,25 +150,38 @@ class UzexEtenderConnector(Connector):
 
     @with_retry(max_attempts=3)
     async def _do_listing_request(
-        self, client: httpx.AsyncClient, *, from_offset: int, to_offset: int
+        self,
+        client: httpx.AsyncClient,
+        *,
+        url: str,
+        from_offset: int,
+        to_offset: int,
     ) -> httpx.Response:
         body: dict[str, int] = {
             **self.LISTING_BODY_TEMPLATE,
             "From": from_offset,
             "To": to_offset,
         }
-        response = await client.post(self.LISTING_URL, json=body)
+        response = await client.post(url, json=body)
         response.raise_for_status()
         return response
 
     async def _fetch_listing_page(
-        self, client: httpx.AsyncClient, *, page_index: int
+        self,
+        client: httpx.AsyncClient,
+        *,
+        url: str,
+        stream_name: str,
+        page_index: int,
     ) -> list[dict[str, Any]]:
         from_offset = page_index * self.PAGE_SIZE + 1
         to_offset = (page_index + 1) * self.PAGE_SIZE
         try:
             response = await self._do_listing_request(
-                client, from_offset=from_offset, to_offset=to_offset
+                client,
+                url=url,
+                from_offset=from_offset,
+                to_offset=to_offset,
             )
         except (
             httpx.TimeoutException,
@@ -147,76 +189,299 @@ class UzexEtenderConnector(Connector):
             httpx.HTTPStatusError,
         ) as exc:
             raise FetchError(
-                f"uzex_etender listing From={from_offset} To={to_offset} "
+                f"uzex_etender {stream_name} listing From={from_offset} "
+                f"To={to_offset} "
                 f"failed: {type(exc).__name__}: {exc}"
             ) from exc
         payload = response.json()
         if not isinstance(payload, list):
             raise FetchError(
-                f"uzex_etender listing From={from_offset} returned "
+                f"uzex_etender {stream_name} listing From={from_offset} returned "
                 f"non-list payload: {type(payload).__name__}"
             )
         return payload
 
+    @with_retry(max_attempts=3)
+    async def _do_detail_request(
+        self, client: httpx.AsyncClient, *, lot_id: str
+    ) -> httpx.Response:
+        response = await client.get(
+            self.DETAIL_URL_TEMPLATE.format(lot_id=lot_id)
+        )
+        response.raise_for_status()
+        return response
+
+    async def _fetch_detail(
+        self, client: httpx.AsyncClient, *, lot_id: str
+    ) -> dict[str, Any]:
+        try:
+            response = await self._do_detail_request(client, lot_id=lot_id)
+        except (
+            httpx.TimeoutException,
+            httpx.NetworkError,
+            httpx.HTTPStatusError,
+        ) as exc:
+            raise FetchError(
+                f"uzex_etender detail lot_id={lot_id} failed: "
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise FetchError(
+                f"uzex_etender detail lot_id={lot_id} returned non-dict "
+                f"payload: {type(payload).__name__}"
+            )
+        return payload
+
+    def _parse_embedded_json(self, value: Any) -> Any | None:
+        if not isinstance(value, str):
+            return None
+        cleaned = value.strip()
+        if not cleaned or cleaned[0] not in "[{":
+            return None
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            return None
+
+    def _extract_detail_description(
+        self, detail: dict[str, Any], *, fallback_title: str
+    ) -> str | None:
+        parts: list[str] = []
+        for key in ("technical_description", "addon_description", "description"):
+            value = detail.get(key)
+            if isinstance(value, str) and value.strip():
+                parts.append(value.strip())
+
+        parsed_products = self._parse_embedded_json(detail.get("budget_products"))
+        if isinstance(parsed_products, list):
+            for product in parsed_products:
+                if not isinstance(product, dict):
+                    continue
+                description = product.get("Description")
+                if isinstance(description, str) and description.strip():
+                    parts.append(description.strip())
+
+        unique_parts: list[str] = []
+        seen: set[str] = set()
+        for part in parts:
+            if part == fallback_title or part in seen:
+                continue
+            seen.add(part)
+            unique_parts.append(part)
+        if not unique_parts:
+            return None
+        return "\n\n".join(unique_parts)
+
+    def _status_from_raw(self, raw: dict[str, Any]) -> TenderStatus:
+        listing_stream = raw.get("_listing_stream")
+        if listing_stream == "deals" or raw.get("_listing_deal_id") is not None:
+            return TenderStatus.awarded
+        if listing_stream == "not_dealed":
+            return TenderStatus.cancelled
+
+        status_id = raw.get("_listing_status_id")
+        if status_id is None:
+            status_id = raw.get("status_id")
+        if status_id == 12:
+            return TenderStatus.cancelled
+        if status_id == 6:
+            return TenderStatus.closed
+        if status_id == 4:
+            return TenderStatus.open
+
+        status_name = raw.get("_listing_status_name")
+        if status_name is None:
+            status_name = raw.get("status_name")
+        if isinstance(status_name, str):
+            normalized = status_name.casefold()
+            if "протокол" in normalized or "deal" in normalized:
+                return TenderStatus.awarded
+            if "не состоя" in normalized or "cancel" in normalized:
+                return TenderStatus.cancelled
+            if "тугат" in normalized or "closed" in normalized:
+                return TenderStatus.closed
+            if "эълон" in normalized or "open" in normalized:
+                return TenderStatus.open
+
+        return TenderStatus.open
+
+    def _lot_id_from_raw(self, raw: dict[str, Any]) -> str | None:
+        item_id = raw.get("id")
+        if item_id is not None:
+            return str(item_id)
+        trade_id = raw.get("trade_id")
+        if trade_id is not None:
+            return str(trade_id)
+        return None
+
+    def _candidate_timestamp(self, raw: dict[str, Any]) -> datetime | None:
+        candidates: list[datetime] = []
+        for key in ("deal_date", "end_date", "start_date"):
+            parsed = parse_naive_tashkent(raw.get(key))
+            if parsed is not None:
+                candidates.append(parsed)
+        if not candidates:
+            return None
+        return max(candidates)
+
     async def _fetch_raw(self, since: datetime | None) -> list[dict[str, Any]]:
         accumulated: list[dict[str, Any]] = []
-        pages_walked = 0
         async with self._make_client() as client:
-            for page_index in range(self.MAX_PAGES):
-                page_items = await self._fetch_listing_page(
-                    client, page_index=page_index
+            for stream_name, url, max_pages in self.LISTING_STREAMS:
+                stream_items = await self._fetch_stream(
+                    client,
+                    stream_name=stream_name,
+                    url=url,
+                    max_pages=max_pages,
                 )
-                pages_walked = page_index + 1
-                if not page_items:
-                    break
-                accumulated.extend(page_items)
-                if len(page_items) < self.PAGE_SIZE:
-                    # Short page is the last page -- the API doesn't
-                    # set a "has more" flag.
-                    break
+                accumulated.extend(stream_items)
+
+            deduped = self._dedupe_raw_items(accumulated)
+
+            logger.info(
+                "uzex_etender.listing_complete",
+                stream_count=len(self.LISTING_STREAMS),
+                items_collected=len(accumulated),
+                unique_items=len(deduped),
+            )
+
+            if since is None:
+                return await self._enrich_with_details(client, deduped)
+
+            # Post-pagination filter: see module docstring for why early
+            # termination is unsafe (stream ordering is not strictly monotone
+            # with respect to listing position).
+            in_window: list[dict[str, Any]] = []
+            for item in deduped:
+                candidate_timestamp = self._candidate_timestamp(item)
+                if candidate_timestamp is None or candidate_timestamp >= since:
+                    in_window.append(item)
+            logger.info(
+                "uzex_etender.since_filter_applied",
+                input_items=len(deduped),
+                kept=len(in_window),
+                since=since.isoformat(),
+            )
+            return await self._enrich_with_details(client, in_window)
+
+    async def _fetch_stream(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        stream_name: str,
+        url: str,
+        max_pages: int,
+    ) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        pages_walked = 0
+        for page_index in range(max_pages):
+            page_items = await self._fetch_listing_page(
+                client,
+                url=url,
+                stream_name=stream_name,
+                page_index=page_index,
+            )
+            pages_walked = page_index + 1
+            if not page_items:
+                break
+            for item in page_items:
+                if isinstance(item, dict):
+                    items.append(
+                        {
+                            **item,
+                            "_listing_stream": stream_name,
+                        }
+                    )
+            if len(page_items) < self.PAGE_SIZE:
+                break
 
         logger.info(
-            "uzex_etender.listing_complete",
+            "uzex_etender.stream_complete",
+            stream=stream_name,
             pages_walked=pages_walked,
-            items_collected=len(accumulated),
+            items_collected=len(items),
         )
+        return items
 
-        if since is None:
-            return accumulated
+    def _dedupe_raw_items(
+        self, items: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        unique: dict[str, dict[str, Any]] = {}
+        for item in items:
+            lot_id = self._lot_id_from_raw(item)
+            if lot_id is None:
+                continue
+            unique.setdefault(lot_id, item)
+        return list(unique.values())
 
-        # Post-pagination filter: see module docstring for why early
-        # termination is unsafe (start_date is not strictly monotone
-        # with respect to listing position).
-        in_window: list[dict[str, Any]] = []
-        for item in accumulated:
-            started = parse_naive_tashkent(item.get("start_date"))
-            if started is None or started >= since:
-                in_window.append(item)
+    async def _enrich_with_details(
+        self,
+        client: httpx.AsyncClient,
+        items: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        enriched: list[dict[str, Any]] = []
+        for item in items:
+            lot_id = self._lot_id_from_raw(item)
+            if lot_id is None:
+                enriched.append(item)
+                continue
+
+            try:
+                detail = await self._fetch_detail(client, lot_id=lot_id)
+            except FetchError as exc:
+                logger.warning(
+                    "uzex_etender.detail_fetch_failed",
+                    lot_id=lot_id,
+                    error=str(exc),
+                )
+                merged = dict(item)
+                merged["_detail_fetch_error"] = str(exc)
+                enriched.append(merged)
+                continue
+
+            merged = {**item, **detail}
+            merged["_detail"] = detail
+            merged["_listing_status_id"] = item.get("status_id")
+            merged["_listing_status_name"] = item.get("status_name")
+            merged["_listing_deal_id"] = item.get("deal_id")
+            enriched.append(merged)
+
         logger.info(
-            "uzex_etender.since_filter_applied",
-            input_items=len(accumulated),
-            kept=len(in_window),
-            since=since.isoformat(),
+            "uzex_etender.detail_enrichment_complete",
+            items_requested=len(items),
+            items_enriched=len(enriched),
         )
-        return in_window
+        return enriched
 
     def _normalize(self, raw: dict[str, Any]) -> TenderUpsert:
-        item_id = raw.get("id")
+        item_id = self._lot_id_from_raw(raw)
         if item_id is None:
-            raise ParseError("uzex_etender item is missing 'id'")
+            raise ParseError("uzex_etender item is missing id/trade_id")
 
-        title = raw.get("name")
+        title = raw.get("name") or raw.get("category_name")
         if not title:
             raise ParseError(f"uzex_etender item {item_id} has empty name")
 
-        buyer_name = raw.get("seller_name")
-        buyer_external_id = raw.get("seller_tin")
+        detail = raw.get("_detail")
+        detail_dict = detail if isinstance(detail, dict) else {}
 
-        cost = raw.get("cost")
+        buyer_name = raw.get("customer_name") or raw.get("seller_name")
+        buyer_external_id = (
+            raw.get("customer_tin")
+            or raw.get("customer_inn")
+            or raw.get("seller_tin")
+        )
+
+        cost = raw.get("start_cost")
+        if cost is None:
+            cost = raw.get("cost")
         value_amount: Decimal | None = (
             Decimal(str(cost)) if cost is not None else None
         )
-        value_currency = raw.get("currency_codeabc") if value_amount is not None else None
+        value_currency = (
+            raw.get("currency_codeabc") if value_amount is not None else None
+        )
 
         published_at = parse_naive_tashkent(raw.get("start_date"))
         deadline_at = parse_naive_tashkent(raw.get("end_date"))
@@ -224,15 +489,23 @@ class UzexEtenderConnector(Connector):
         source_url = f"https://etender.uzex.uz/lot/{item_id}"
 
         raw_json: dict[str, Any] = dict(raw)
-        # Synthetic single-element _lots wrap so the keyword matcher's
-        # haystack walk picks up the title in the same shape it does
-        # for the KZ connectors. ``description_ru`` stays None because
-        # the listing has no description field; the bilingual title
-        # IS the only signal source for v1.
+        parsed_detail: dict[str, Any] = {}
+        for field_name in self.EMBEDDED_JSON_FIELDS:
+            parsed_value = self._parse_embedded_json(raw.get(field_name))
+            if parsed_value is not None:
+                parsed_detail[field_name] = parsed_value
+        if parsed_detail:
+            raw_json["_parsed_detail"] = parsed_detail
+
+        detail_description = self._extract_detail_description(
+            detail_dict,
+            fallback_title=title,
+        )
+
         raw_json["_lots"] = [
             {
                 "name_ru": raw.get("name"),
-                "description_ru": None,
+                "description_ru": detail_description,
             }
         ]
 
@@ -248,7 +521,7 @@ class UzexEtenderConnector(Connector):
             value_currency=value_currency,
             published_at=published_at,
             deadline_at=deadline_at,
-            status=TenderStatus.open,  # TypeId=1 filters to active tenders.
+            status=self._status_from_raw(raw),
             source_url=source_url,
             language=Language.ru,
             raw_json=raw_json,

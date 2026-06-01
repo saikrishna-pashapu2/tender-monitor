@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Self
+from typing import Any, Self
 
 import yaml
 from pydantic import (
@@ -172,11 +172,10 @@ def match_text(text: str, config: KeywordsConfig) -> MatchResult:
 def _searchable_text(tender: TenderUpsert) -> str:
     """Build the haystack we run the matcher against.
 
-    v1 strategy: title + buyer_name + best-effort walk of any lots
-    inside raw_json, picking up keys ending in `_ru` plus the bare
-    `name` and `description` keys. Non-string values are skipped
-    silently. Other sources can fill `raw_json` with similarly-named
-    fields and inherit this for free.
+    Strategy: title + buyer_name + recursive walk over every string
+    value inside raw_json. That makes nested detail payloads from
+    connectors like UZEX searchable without maintaining a source-
+    specific allowlist here.
     """
     parts: list[str] = [tender.title]
     if tender.buyer_name:
@@ -186,18 +185,19 @@ def _searchable_text(tender: TenderUpsert) -> str:
     if not isinstance(raw_json, dict):
         return " ".join(parts)
 
-    lots = raw_json.get("_lots")
-    if not isinstance(lots, list):
-        return " ".join(parts)
+    def _walk(value: Any) -> None:
+        if isinstance(value, str):
+            parts.append(value)
+            return
+        if isinstance(value, dict):
+            for nested in value.values():
+                _walk(nested)
+            return
+        if isinstance(value, list):
+            for nested in value:
+                _walk(nested)
 
-    for lot in lots:
-        if not isinstance(lot, dict):
-            continue
-        for key, value in lot.items():
-            if not isinstance(value, str):
-                continue
-            if key.endswith("_ru") or key in {"name", "description"}:
-                parts.append(value)
+    _walk(raw_json)
 
     return " ".join(parts)
 
