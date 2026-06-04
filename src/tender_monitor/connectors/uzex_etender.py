@@ -44,6 +44,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from decimal import Decimal
+from urllib.parse import quote
 from typing import Any, ClassVar
 
 import httpx
@@ -122,6 +123,21 @@ class UzexEtenderConnector(Connector):
         "fields",
         "languages",
         "qualification_fields",
+    )
+    FILE_SLOTS: ClassVar[tuple[tuple[str, str], ...]] = (
+        ("tech_file", "Technical attachment"),
+        ("tech_doc_file", "Technical document"),
+        ("add_file", "Additional attachment"),
+        ("contract_proform_file", "Contract template"),
+        ("contract_file", "Contract"),
+        ("expertise_file", "Expertise file"),
+        ("prolong_file", "Extension document"),
+        ("protocol_file", "Protocol"),
+        ("conclusion_file", "Conclusion"),
+        ("additional_protocol_file", "Additional protocol"),
+        ("additional_agreement_file", "Additional agreement"),
+        ("deal_additional_file", "Deal attachment"),
+        ("agreement_additional_file", "Agreement attachment"),
     )
     LISTING_BODY_TEMPLATE: ClassVar[dict[str, int]] = {
         "TypeId": 1,
@@ -243,6 +259,116 @@ class UzexEtenderConnector(Connector):
             return json.loads(cleaned)
         except json.JSONDecodeError:
             return None
+
+    def _build_file_url(self, path: str) -> str:
+        normalized = path.strip()
+        return (
+            "https://xarid.uzex.uz/x-cloud?file_path="
+            f"{quote(normalized, safe='')}"
+        )
+
+    def _document_name_from_path(self, path: str) -> str:
+        normalized = path.rstrip("/")
+        if not normalized:
+            return "Document"
+        return normalized.rsplit("/", 1)[-1]
+
+    def _extract_documents(self, raw: dict[str, Any]) -> list[dict[str, Any]]:
+        documents: list[dict[str, Any]] = []
+        seen_paths: set[str] = set()
+
+        def _append_document(
+            *,
+            category: str,
+            path: Any,
+            name: Any = None,
+            ext: Any = None,
+            size_bytes: Any = None,
+            source: str,
+        ) -> None:
+            if not isinstance(path, str) or not path.strip():
+                return
+            normalized_path = path.strip()
+            if normalized_path in seen_paths:
+                return
+            seen_paths.add(normalized_path)
+            if isinstance(size_bytes, int | float):
+                normalized_size: int | float | None = size_bytes
+            else:
+                normalized_size = None
+            documents.append(
+                {
+                    "category": category,
+                    "name": (
+                        name.strip()
+                        if isinstance(name, str) and name.strip()
+                        else self._document_name_from_path(normalized_path)
+                    ),
+                    "path": normalized_path,
+                    "url": self._build_file_url(normalized_path),
+                    "ext": (
+                        ext.strip().upper()
+                        if isinstance(ext, str) and ext.strip()
+                        else None
+                    ),
+                    "size_bytes": normalized_size,
+                    "source": source,
+                }
+            )
+
+        for prefix, category in self.FILE_SLOTS:
+            _append_document(
+                category=category,
+                path=raw.get(f"{prefix}_path"),
+                name=raw.get(f"{prefix}_name"),
+                ext=raw.get(f"{prefix}_ext"),
+                size_bytes=raw.get(f"{prefix}_sizes"),
+                source="detail_slot",
+            )
+
+        def _walk_embedded_documents(value: Any, *, category: str) -> None:
+            if isinstance(value, dict):
+                path = (
+                    value.get("Form_File_Path")
+                    or value.get("form_file_path")
+                    or value.get("File_Path")
+                    or value.get("file_path")
+                )
+                if path:
+                    _append_document(
+                        category=category,
+                        path=path,
+                        name=(
+                            value.get("File_Name")
+                            or value.get("file_name")
+                            or value.get("Form_Name")
+                            or value.get("form_name")
+                            or value.get("Label")
+                            or value.get("label")
+                            or value.get("Name")
+                            or value.get("name")
+                        ),
+                        ext=value.get("file_ext") or value.get("File_Ext"),
+                        size_bytes=value.get("file_sizes")
+                        or value.get("File_Sizes"),
+                        source="detail_embedded",
+                    )
+                for nested in value.values():
+                    if isinstance(nested, dict | list):
+                        _walk_embedded_documents(nested, category=category)
+            elif isinstance(value, list):
+                for nested in value:
+                    _walk_embedded_documents(nested, category=category)
+
+        for field_name, category in (
+            ("fields", "Criteria form"),
+            ("qualification_fields", "Qualification document"),
+        ):
+            parsed_value = self._parse_embedded_json(raw.get(field_name))
+            if parsed_value is not None:
+                _walk_embedded_documents(parsed_value, category=category)
+
+        return documents
 
     def _extract_detail_description(
         self, detail: dict[str, Any], *, fallback_title: str
@@ -496,6 +622,9 @@ class UzexEtenderConnector(Connector):
                 parsed_detail[field_name] = parsed_value
         if parsed_detail:
             raw_json["_parsed_detail"] = parsed_detail
+        documents = self._extract_documents(raw)
+        if documents:
+            raw_json["_documents"] = documents
 
         detail_description = self._extract_detail_description(
             detail_dict,

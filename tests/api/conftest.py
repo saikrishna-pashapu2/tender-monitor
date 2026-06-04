@@ -270,6 +270,19 @@ async def seeded_session(
                 deadline_offset_days=15,
                 published_offset_days=-1,
                 first_seen_offset_minutes=70,
+                raw_json={
+                    "id": "x-1",
+                    "_documents": [
+                        {
+                            "category": "Technical document",
+                            "name": "climate-strategy.pdf",
+                            "url": "https://xarid.uzex.uz/x-cloud?file_path=tender%2Fuser-files%2F2026%2F5%2F1%2Fclimate-strategy.pdf",
+                            "ext": "PDF",
+                            "size_bytes": 125193,
+                            "source": "detail_slot",
+                        }
+                    ],
+                },
             )
         )
         rows.append(

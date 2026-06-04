@@ -4,8 +4,11 @@ Shape notes that differ from goszakup/samruk_kazyna:
 
 - The portal is server-rendered HTML (Yii2/PHP), not a JSON API. We parse
   with ``selectolax`` and never touch a JSON endpoint here.
-- The listing rows already carry every field we need for v1 (title,
-  buyer name + BIN, dates, status, value). No detail-page fetch in v1.
+- Listings provide discovery plus the main dates / buyer / status fields,
+  but the detail page carries richer procurement metadata, lot
+  descriptions, and downloadable files. We now fetch the detail page for
+  each listing row and store parsed detail fields under ``raw_json`` so
+  the matcher can see them and the UI can render documents/lots.
 - Dates in the HTML are KZ-local (Asia/Almaty, UTC+5) with no timezone
   suffix. We parse them as naive, localize, and convert to UTC before
   storing.
@@ -19,6 +22,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, ClassVar
+from urllib.parse import urljoin
 
 import httpx
 from selectolax.parser import HTMLParser, Node
@@ -46,11 +50,215 @@ logger = get_logger(__name__)
 # live values; everything not listed falls through to TenderStatus.unknown.
 STATUS_MAPPING: dict[str, TenderStatus] = {
     "Опубликовано": TenderStatus.open,
+    "Завершено": TenderStatus.closed,
+    "Отменено": TenderStatus.cancelled,
+}
+
+DETAIL_FIELD_LABELS: dict[str, str] = {
+    "Наименование на государственном языке": "title_kk",
+    "Наименование на русском языке": "title_ru_detail",
+    "Дата начала приема заявок": "offer_start_text_detail",
+    "Дата окончания приема заявок": "offer_end_text_detail",
+    "Организатор": "organizer_name",
+    "Способ закупки": "procurement_method_detail",
+    "Правила закупок": "rules_name",
+    "Тип закупки": "purchase_type",
+    "Статус": "status_text_detail",
 }
 
 
 def _td_text(td: Node) -> str:
     return td.text().strip()
+
+
+def _extract_file_ext(name: str | None) -> str | None:
+    if not name or "." not in name:
+        return None
+    ext = name.rsplit(".", 1)[-1].strip().upper()
+    return ext or None
+
+
+def _detail_table_by_headers(
+    tree: HTMLParser, expected_headers: tuple[str, ...]
+) -> Node | None:
+    for table in tree.css("table"):
+        header_cells = table.css("thead th")
+        if not header_cells:
+            continue
+        headers = tuple(_td_text(cell) for cell in header_cells)
+        if headers[: len(expected_headers)] == expected_headers:
+            return table
+    return None
+
+
+def _parse_detail_fields(tree: HTMLParser) -> dict[str, Any]:
+    table = tree.css_first("table.detail-view")
+    if table is None:
+        return {}
+
+    fields: dict[str, Any] = {}
+    for row in table.css("tr"):
+        key_cell = row.css_first("th")
+        value_cell = row.css_first("td")
+        if key_cell is None or value_cell is None:
+            continue
+
+        label = _td_text(key_cell)
+        field_name = DETAIL_FIELD_LABELS.get(label)
+        if field_name is None:
+            continue
+
+        fields[field_name] = _td_text(value_cell)
+
+        link = value_cell.css_first("a")
+        if link is None:
+            continue
+
+        href = (link.attributes.get("href") or "").strip()
+        if not href:
+            continue
+
+        if field_name == "organizer_name":
+            fields["organizer_url"] = urljoin(
+                MitworkConnector.LISTING_URL, href
+            )
+        elif field_name == "rules_name":
+            fields["rules_url"] = urljoin(MitworkConnector.LISTING_URL, href)
+
+    return fields
+
+
+def _parse_documents(tree: HTMLParser) -> list[dict[str, Any]]:
+    table = _detail_table_by_headers(
+        tree,
+        (
+            "Категория документа",
+            "Наименование документа",
+        ),
+    )
+    if table is None:
+        return []
+
+    documents: list[dict[str, Any]] = []
+    for row in table.css("tbody tr"):
+        cells = row.css("td")
+        if len(cells) < 2:
+            continue
+
+        name_link = cells[1].css_first("a")
+        action_link = cells[-1].css_first("a")
+        name = _td_text(cells[1])
+        show_url = (
+            (name_link.attributes.get("href") or "").strip()
+            if name_link is not None
+            else ""
+        )
+        download_url = (
+            (action_link.attributes.get("href") or "").strip()
+            if action_link is not None
+            else ""
+        )
+
+        documents.append(
+            {
+                "category": _td_text(cells[0]) or None,
+                "name": name or "Document",
+                "url": urljoin(
+                    MitworkConnector.LISTING_URL, download_url or show_url
+                )
+                if download_url or show_url
+                else None,
+                "preview_url": urljoin(MitworkConnector.LISTING_URL, show_url)
+                if show_url
+                else None,
+                "size_text": _td_text(cells[2]) if len(cells) > 2 else None,
+                "uploaded_at_text": _td_text(cells[3])
+                if len(cells) > 3
+                else None,
+                "hash": _td_text(cells[4]) if len(cells) > 4 else None,
+                "ext": _extract_file_ext(name),
+                "source": "detail_page",
+            }
+        )
+
+    return documents
+
+
+def _parse_lots(tree: HTMLParser) -> list[dict[str, Any]]:
+    table = _detail_table_by_headers(
+        tree,
+        (
+            "Номер",
+            "Наименование",
+        ),
+    )
+    if table is None:
+        return []
+
+    lots: list[dict[str, Any]] = []
+    for row in table.css("tbody tr"):
+        cells = row.css("td")
+        if len(cells) < 7:
+            continue
+
+        title_cell = cells[1]
+        title_link = title_cell.css_first("a")
+        title = title_link.text().strip() if title_link is not None else _td_text(title_cell)
+        lot_url = (
+            urljoin(
+                MitworkConnector.LISTING_URL,
+                (title_link.attributes.get("href") or "").strip(),
+            )
+            if title_link is not None
+            else None
+        )
+        code_badge = title_cell.css_first("span.label")
+
+        unit_price = parse_kzt_amount(_td_text(cells[4]))
+        total_amount = parse_kzt_amount(_td_text(cells[5]))
+
+        lots.append(
+            {
+                "number": _td_text(cells[0]) or None,
+                "name_ru": title or None,
+                "description_ru": _td_text(cells[2]) or None,
+                "quantity_text": _td_text(cells[3]) or None,
+                "unit_price_text": _td_text(cells[4]) or None,
+                "unit_price_amount": (
+                    str(unit_price) if unit_price is not None else None
+                ),
+                "total_amount_text": _td_text(cells[5]) or None,
+                "total_amount": (
+                    str(total_amount) if total_amount is not None else None
+                ),
+                "currency": "KZT"
+                if unit_price is not None or total_amount is not None
+                else None,
+                "submitted_bids_text": _td_text(cells[6]) or None,
+                "classification_code": code_badge.text().strip()
+                if code_badge is not None
+                else None,
+                "lot_url": lot_url,
+            }
+        )
+
+    return lots
+
+
+def _parse_detail_page(html: str) -> dict[str, Any]:
+    tree = HTMLParser(html)
+    detail_fields = _parse_detail_fields(tree)
+    documents = _parse_documents(tree)
+    lots = _parse_lots(tree)
+
+    parsed: dict[str, Any] = {}
+    if detail_fields:
+        parsed["detail_fields"] = detail_fields
+    if documents:
+        parsed["_documents"] = documents
+    if lots:
+        parsed["_lots"] = lots
+    return parsed
 
 
 def _parse_row(row: Node) -> dict[str, Any]:
@@ -192,6 +400,66 @@ class MitworkConnector(Connector):
         rows = tree.css("tr.item")
         return [_parse_row(row) for row in rows]
 
+    @with_retry(max_attempts=3)
+    async def _do_detail_request(
+        self, client: httpx.AsyncClient, external_id: str
+    ) -> httpx.Response:
+        response = await client.get(
+            self.DETAIL_URL_TEMPLATE.format(external_id=external_id)
+        )
+        response.raise_for_status()
+        return response
+
+    async def _fetch_detail_page(
+        self, client: httpx.AsyncClient, external_id: str
+    ) -> dict[str, Any]:
+        try:
+            response = await self._do_detail_request(client, external_id)
+        except (
+            httpx.TimeoutException,
+            httpx.NetworkError,
+            httpx.HTTPStatusError,
+        ) as exc:
+            raise FetchError(
+                f"mitwork detail external_id={external_id} failed: "
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
+        return _parse_detail_page(response.text)
+
+    async def _enrich_with_details(
+        self,
+        client: httpx.AsyncClient,
+        rows: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        enriched: list[dict[str, Any]] = []
+        for row in rows:
+            external_id = row.get("data_key")
+            if not isinstance(external_id, str) or not external_id:
+                enriched.append(row)
+                continue
+
+            try:
+                detail = await self._fetch_detail_page(client, external_id)
+            except FetchError as exc:
+                logger.warning(
+                    "mitwork.detail_fetch_failed",
+                    external_id=external_id,
+                    error=str(exc),
+                )
+                merged = dict(row)
+                merged["_detail_fetch_error"] = str(exc)
+                enriched.append(merged)
+                continue
+
+            enriched.append({**row, **detail})
+
+        logger.info(
+            "mitwork.detail_enrichment_complete",
+            items_requested=len(rows),
+            items_enriched=len(enriched),
+        )
+        return enriched
+
     async def _fetch_raw(self, since: datetime | None) -> list[dict[str, Any]]:
         accumulated: list[dict[str, Any]] = []
         crossed_since_boundary = False
@@ -223,6 +491,8 @@ class MitworkConnector(Connector):
                 if len(page_rows) < self.PAGE_SIZE:
                     break
 
+            accumulated = await self._enrich_with_details(client, accumulated)
+
         logger.info(
             "mitwork.listing_complete",
             pages_walked=pages_walked,
@@ -246,10 +516,23 @@ class MitworkConnector(Connector):
         value_amount = parse_kzt_amount(raw.get("value_text"))
         value_currency = "KZT" if value_amount is not None else None
 
-        published_at = parse_kz_local_datetime(raw.get("offer_start_text"))
-        deadline_at = parse_kz_local_datetime(raw.get("offer_end_text"))
+        detail_fields = raw.get("detail_fields")
+        detail_fields_dict = (
+            detail_fields if isinstance(detail_fields, dict) else {}
+        )
 
-        status_text = raw.get("status_text")
+        published_at = parse_kz_local_datetime(
+            detail_fields_dict.get("offer_start_text_detail")
+            or raw.get("offer_start_text")
+        )
+        deadline_at = parse_kz_local_datetime(
+            detail_fields_dict.get("offer_end_text_detail")
+            or raw.get("offer_end_text")
+        )
+
+        status_text = (
+            detail_fields_dict.get("status_text_detail") or raw.get("status_text")
+        )
         status = (
             STATUS_MAPPING.get(status_text, TenderStatus.unknown)
             if isinstance(status_text, str)
@@ -259,6 +542,9 @@ class MitworkConnector(Connector):
         source_url = raw.get("detail_url") or self.DETAIL_URL_TEMPLATE.format(
             external_id=external_id
         )
+
+        title = detail_fields_dict.get("title_ru_detail") or title
+        buyer_name = detail_fields_dict.get("organizer_name") or buyer_name
 
         # Strip the parsed-datetime convenience field — it's there for the
         # since-filter step in _fetch_raw and would not be JSON-serializable

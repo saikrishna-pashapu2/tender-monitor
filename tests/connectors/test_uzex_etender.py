@@ -388,6 +388,15 @@ async def test_fetch_latest_enriches_with_detail_payload() -> None:
     assert tender.value_amount == Decimal("2476000000.0")
     assert tender.status is TenderStatus.closed
     assert tender.raw_json["_detail"]["id"] == 482604
+    assert len(tender.raw_json["_documents"]) == 5
+    assert tender.raw_json["_documents"][0]["url"].startswith(
+        "https://xarid.uzex.uz/x-cloud?file_path="
+    )
+    assert any(
+        doc["name"] == "202604233530012202.pdf"
+        and doc["ext"] == "PDF"
+        for doc in tender.raw_json["_documents"]
+    )
     assert (
         tender.raw_json["_parsed_detail"]["budget_products"][0]["Description"]
         .lower()

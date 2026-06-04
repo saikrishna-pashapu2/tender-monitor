@@ -11,8 +11,10 @@ that hits zakup.gov.kz):
   title (which tends to be generic — "Закуп моющих средств" — while
   lots are specific — "Средство моющее для посуды").
 - Multiple lots share an announcement. We fetch each announcement's
-  detail page exactly once and stitch it onto every lot that points
-  at that announcement, so we never N+1 the same detail URL.
+  main page exactly once and also pull the announcement ``lots`` and
+  ``documents`` tabs exactly once, then stitch them onto every lot
+  that points at that announcement, so we never N+1 the same
+  announcement URL family.
 - Announcement detail is HTML too. It carries the publish date,
   offer start/end, organizer BIN, etc. — fields the listing doesn't
   surface inline.
@@ -28,6 +30,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from urllib.parse import urljoin
 from typing import Any, ClassVar
 
 import httpx
@@ -99,6 +102,27 @@ _BIN_PREFIX_RE = re.compile(r"^(\d{12})\s*(.*)$")
 
 def _text(node: Node | None) -> str:
     return node.text().strip() if node is not None else ""
+
+
+def _normalize_header_cells(table: Node) -> tuple[str, ...]:
+    header_cells = table.css("thead th")
+    if header_cells:
+        return tuple(" ".join(cell.text().split()) for cell in header_cells)
+    first_row = table.css_first("tr")
+    if first_row is None:
+        return ()
+    th_cells = first_row.css("th")
+    return tuple(" ".join(cell.text().split()) for cell in th_cells)
+
+
+def _find_table_by_header_prefix(
+    parser: HTMLParser, expected_headers: tuple[str, ...]
+) -> Node | None:
+    for table in parser.css("table"):
+        headers = _normalize_header_cells(table)
+        if headers[: len(expected_headers)] == expected_headers:
+            return table
+    return None
 
 
 def _parse_listing_row(tr: Node) -> dict[str, Any]:
@@ -261,6 +285,89 @@ def _parse_announcement(html: str) -> dict[str, Any]:
     return out
 
 
+def _parse_documents_tab(html: str) -> list[dict[str, Any]]:
+    parser = HTMLParser(html)
+    table = _find_table_by_header_prefix(
+        parser,
+        (
+            "Наименование документа",
+            "Признак",
+        ),
+    )
+    if table is None:
+        return []
+
+    documents: list[dict[str, Any]] = []
+    for row in table.css("tbody tr"):
+        cells = row.css("td")
+        if not cells:
+            continue
+        name = _text(cells[0])
+        if not name:
+            continue
+        link = row.css_first("a")
+        href = (link.attributes.get("href") or "").strip() if link is not None else ""
+        documents.append(
+            {
+                "category": None,
+                "name": name,
+                "signed_text": _text(cells[1]) if len(cells) > 1 else None,
+                "url": urljoin("https://goszakup.gov.kz", href) if href else None,
+                "source": "announcement_documents_tab",
+            }
+        )
+    return documents
+
+
+def _parse_lots_tab(html: str) -> list[dict[str, Any]]:
+    parser = HTMLParser(html)
+    table = _find_table_by_header_prefix(
+        parser,
+        (
+            "№",
+            "Наименование",
+        ),
+    )
+    if table is None:
+        return []
+
+    lots: list[dict[str, Any]] = []
+    for row in table.css("tbody tr"):
+        cells = row.css("td")
+        if len(cells) < 2:
+            continue
+
+        title_cell = cells[1]
+        title_link = title_cell.css_first("a")
+        title = _text(title_cell)
+        href = (
+            (title_link.attributes.get("href") or "").strip()
+            if title_link is not None
+            else ""
+        )
+        lot_record: dict[str, Any] = {
+            "sequence_text": _text(cells[0]) or None,
+            "name_ru": title or None,
+            "lot_url": urljoin("https://goszakup.gov.kz", href) if href else None,
+        }
+
+        if len(cells) > 2:
+            lot_record["description_ru"] = _text(cells[2]) or None
+        if len(cells) > 3:
+            lot_record["quantity_text"] = _text(cells[3]) or None
+        if len(cells) > 4:
+            amount_text = _text(cells[4]) or None
+            lot_record["amount_text"] = amount_text
+            amount = parse_kzt_amount(amount_text)
+            lot_record["amount"] = str(amount) if amount is not None else None
+            lot_record["currency"] = (
+                "KZT" if amount is not None else None
+            )
+
+        lots.append(lot_record)
+    return lots
+
+
 @register
 class GoszakupConnector(Connector):
     source_name: ClassVar[str] = "goszakup"
@@ -270,8 +377,9 @@ class GoszakupConnector(Connector):
         "https://goszakup.gov.kz/ru/announce/index/{announcement_id}"
     )
     PAGE_SIZE: ClassVar[int] = 50  # server-fixed
-    MAX_PAGES: ClassVar[int] = 5
+    MAX_PAGES: ClassVar[int] = 20
     SINCE_OLD_THRESHOLD: ClassVar[int] = 10
+    ANNOUNCEMENT_TABS: ClassVar[tuple[str, ...]] = ("documents", "lots")
 
     REQUIRED_HEADERS: ClassVar[dict[str, str]] = {
         "User-Agent": (
@@ -300,10 +408,16 @@ class GoszakupConnector(Connector):
 
     @with_retry(max_attempts=3)
     async def _do_detail_request(
-        self, client: httpx.AsyncClient, announcement_id: str
+        self,
+        client: httpx.AsyncClient,
+        announcement_id: str,
+        *,
+        tab: str | None = None,
     ) -> httpx.Response:
+        params = {"tab": tab} if tab is not None else None
         response = await client.get(
             self.DETAIL_URL_TEMPLATE.format(announcement_id=announcement_id),
+            params=params,
             headers={"Referer": self.LISTING_URL},
         )
         response.raise_for_status()
@@ -353,7 +467,7 @@ class GoszakupConnector(Connector):
             )
             return None
         try:
-            return _parse_announcement(response.text)
+            parsed = _parse_announcement(response.text)
         except Exception as exc:  # defensive: bad HTML shouldn't sink the run
             logger.warning(
                 "goszakup.announcement_parse_failed",
@@ -362,13 +476,68 @@ class GoszakupConnector(Connector):
                 error=str(exc),
             )
             return None
+        for tab in self.ANNOUNCEMENT_TABS:
+            try:
+                tab_response = await self._do_detail_request(
+                    client,
+                    announcement_id,
+                    tab=tab,
+                )
+            except (
+                httpx.TimeoutException,
+                httpx.NetworkError,
+                httpx.HTTPStatusError,
+            ) as exc:
+                logger.warning(
+                    "goszakup.announcement_tab_fetch_failed",
+                    announcement_id=announcement_id,
+                    tab=tab,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+                continue
+
+            try:
+                if tab == "documents":
+                    documents = _parse_documents_tab(tab_response.text)
+                    if documents:
+                        parsed["_documents"] = documents
+                elif tab == "lots":
+                    announcement_lots = _parse_lots_tab(tab_response.text)
+                    if announcement_lots:
+                        parsed["_announcement_lots"] = announcement_lots
+            except Exception as exc:  # defensive
+                logger.warning(
+                    "goszakup.announcement_tab_parse_failed",
+                    announcement_id=announcement_id,
+                    tab=tab,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+        return parsed
 
     async def _fetch_raw(self, since: datetime | None) -> list[dict[str, Any]]:
         listing_rows: list[dict[str, Any]] = []
         async with self._make_client() as client:
+            seen_lot_ids: set[str] = set()
             for page in range(1, self.MAX_PAGES + 1):
                 page_rows = await self._fetch_listing_page(client, page)
-                listing_rows.extend(page_rows)
+                fresh_rows = 0
+                for row in page_rows:
+                    lot_id = row.get("lot_id")
+                    if not isinstance(lot_id, str) or not lot_id:
+                        continue
+                    if lot_id in seen_lot_ids:
+                        continue
+                    seen_lot_ids.add(lot_id)
+                    listing_rows.append(row)
+                    fresh_rows += 1
+                if page_rows and fresh_rows == 0:
+                    logger.info(
+                        "goszakup.pagination_stalled",
+                        page=page,
+                    )
+                    break
                 if len(page_rows) < self.PAGE_SIZE:
                     break
 
@@ -450,12 +619,15 @@ class GoszakupConnector(Connector):
         # Synthetic _lots wrap so the keyword matcher walks the lot
         # title alongside the announcement title.
         raw_json = dict(raw)
-        raw_json["_lots"] = [
-            {
-                "name_ru": raw.get("lot_title"),
-                "description_ru": raw.get("announcement_title"),
-            }
-        ]
+        announcement_lots = raw.get("_announcement_lots")
+        if isinstance(announcement_lots, list) and announcement_lots:
+            raw_json["announcement_lots"] = announcement_lots
+        raw_json["_lots"] = [{
+            "name_ru": raw.get("lot_title"),
+            "description_ru": raw.get("announcement_title"),
+            "quantity_text": raw.get("quantity_text"),
+            "amount_text": raw.get("amount_text"),
+        }]
 
         return TenderUpsert(
             source_name=self.source_name,
@@ -480,5 +652,7 @@ __all__ = [
     "STATUS_MAPPING",
     "GoszakupConnector",
     "_parse_announcement",
+    "_parse_documents_tab",
     "_parse_listing_row",
+    "_parse_lots_tab",
 ]

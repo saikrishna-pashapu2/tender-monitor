@@ -305,6 +305,34 @@ async def test_fetch_latest_pagination_offset_increments() -> None:
     assert result.raw_item_count == 110
 
 
+async def test_fetch_latest_dedupes_repeated_ids_across_pages() -> None:
+    template = _fixture_items()[0]
+
+    def _clone(item_id: int) -> dict[str, Any]:
+        clone = copy.deepcopy(template)
+        clone["id"] = item_id
+        return clone
+
+    page1 = [_clone(910000 + i) for i in range(50)]
+    page2 = [_clone(910000 + i) for i in range(50)]
+
+    captured: list[httpx.Request] = []
+    handler = _make_handler(
+        pages_by_offset={0: page1, 50: page2},
+        captured=captured,
+    )
+    transport = httpx.MockTransport(handler)
+    connector = XtXaridConnector(http_client_factory=_client_factory(transport))
+
+    result = await connector.fetch_latest()
+
+    listing_calls = [r for r in captured if _is_listing(r)]
+    offsets = [_body_json(r)["params"]["offset"] for r in listing_calls]
+    assert offsets == [0, 50]
+    assert result.raw_item_count == 50
+    assert len(result.tenders) == 50
+
+
 async def test_fetch_latest_rpc_error_raises_fetch_error() -> None:
     captured: list[httpx.Request] = []
 

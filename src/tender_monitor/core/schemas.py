@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from tender_monitor.core.enums import (
     Country,
@@ -19,6 +19,20 @@ from tender_monitor.core.enums import (
 
 class _ORMModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): _json_safe(nested) for key, nested in value.items()}
+    if isinstance(value, list | tuple | set):
+        return [_json_safe(nested) for nested in value]
+    return value
 
 
 class SourceRead(_ORMModel):
@@ -138,6 +152,13 @@ class TenderUpsert(BaseModel):
     source_url: str
     language: Language = Language.other
     raw_json: dict[str, Any]
+
+    @field_validator("raw_json", mode="before")
+    @classmethod
+    def _coerce_raw_json_json_safe(
+        cls, value: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        return _json_safe(value or {})
 
 
 __all__ = [

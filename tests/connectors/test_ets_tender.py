@@ -139,6 +139,27 @@ def test_parse_detail_extracts_all_fields() -> None:
     assert isinstance(payment_obj, str)
     assert "30 календарных" in payment_obj
     assert detail["organizer_link_text"] == "АО «GALANZ bottlers»"
+    assert detail["_documents"] == []
+
+
+def test_parse_detail_extracts_document_links() -> None:
+    html = """
+    <html><body>
+      <h2 class="tender-title">Тест</h2>
+      <a href="/uploads/specification.pdf">Техническая спецификация</a>
+      <a href="https://cdn.example.com/files/contract.docx?download=1">Проект договора</a>
+      <a href="/market/example">Не документ</a>
+    </body></html>
+    """
+    detail = _parse_detail(html)
+
+    documents = detail["_documents"]
+    assert len(documents) == 2
+    assert documents[0]["name"] == "Техническая спецификация"
+    assert documents[0]["url"] == "https://www.ets-tender.kz/uploads/specification.pdf"
+    assert documents[0]["ext"] == "PDF"
+    assert documents[1]["url"] == "https://cdn.example.com/files/contract.docx?download=1"
+    assert documents[1]["ext"] == "DOCX"
 
 
 # ---------------------------------------------------------------------------
@@ -176,6 +197,23 @@ def test_normalize_happy_path() -> None:
     assert len(lots) == 1
     assert lots[0]["name_ru"] == "Лист стальной г/к"
     assert lots[0]["description_ru"]
+
+
+def test_normalize_keeps_documents() -> None:
+    listing = _first_row()
+    detail = _parse_detail(
+        """
+        <html><body>
+          <h2 class="tender-title">Лист стальной г/к</h2>
+          <a href="/uploads/specification.pdf">Техническая спецификация</a>
+        </body></html>
+        """
+    )
+    raw = {**listing, **detail}
+
+    upsert = EtsTenderConnector()._normalize(raw)
+    assert len(upsert.raw_json["_documents"]) == 1
+    assert upsert.raw_json["_documents"][0]["ext"] == "PDF"
 
 
 def test_normalize_handles_hidden_dates() -> None:
@@ -270,7 +308,7 @@ async def test_fetch_latest_full_pipeline() -> None:
     assert all(t.status is TenderStatus.open for t in result.tenders)
 
 
-async def test_fetch_latest_hard_since_stops_pagination() -> None:
+async def test_fetch_latest_soft_since_stops_pagination_after_threshold() -> None:
     listing_html = _read_fixture("listing.html")
     captured: list[httpx.Request] = []
 
@@ -283,7 +321,8 @@ async def test_fetch_latest_hard_since_stops_pagination() -> None:
 
     # since is AFTER every published date in the fixture (which max at
     # 18.05.2026 11:12 KZ = 06:12 UTC). All rows in window are filtered
-    # out and the connector breaks before page 2.
+    # out and the connector breaks before page 2 once enough old rows
+    # are seen in sequence.
     since = datetime(2026, 5, 19, 0, 0, tzinfo=UTC)
     result = await connector.fetch_latest(since=since)
 
@@ -372,3 +411,44 @@ async def test_fetch_latest_short_page_breaks() -> None:
     assert len(listing_calls) == 1
     assert "2" not in pages_called
     assert len(result.tenders) == 1
+
+
+async def test_fetch_latest_stops_when_pagination_repeats_same_ids() -> None:
+    repeated_page = (
+        '<html><body><table class="search-results"><tbody>'
+        + "".join(
+            (
+                '<tr>'
+                f'<td><a class="search-results-title" href="/market/foo/tender-{9000 + i}/">'
+                f'Запрос цен № {9000 + i}<div class="search-results-title-desc">Тест {i}</div>'
+                '</a></td>'
+                '<td><a href="/firms/foo/1/">ТОО Foo</a></td>'
+                '<td class="nowrap">18.05.2026 09:00</td>'
+                '<td class="nowrap">20.05.2026 09:00</td>'
+                '<td class="favorite-column"></td>'
+                '</tr>'
+            )
+            for i in range(10)
+        )
+        + "</tbody></table></body></html>"
+    )
+
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        if _is_listing(request):
+            return httpx.Response(200, html=repeated_page)
+        return httpx.Response(
+            200,
+            html='<html><body><h2 class="tender-title">stub</h2></body></html>',
+        )
+
+    transport = httpx.MockTransport(handler)
+    connector = EtsTenderConnector(http_client_factory=_client_factory(transport))
+    result = await connector.fetch_latest()
+
+    listing_calls = [r for r in captured if _is_listing(r)]
+    pages_called = [r.url.params.get("page") for r in listing_calls]
+    assert pages_called == [None, "2"]
+    assert len(result.tenders) == 10

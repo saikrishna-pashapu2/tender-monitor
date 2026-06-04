@@ -345,6 +345,56 @@ async def test_fetch_latest_pagination_within_country() -> None:
     assert len(result.tenders) == 150
 
 
+async def test_fetch_latest_dedupes_repeated_items_across_pages() -> None:
+    template_item = _read_fixture("listing_uz.json")["data"][0]
+
+    first_page = []
+    for i in range(100):
+        clone = copy.deepcopy(template_item)
+        clone["site_tender_id"] = f"710000{i:04d}"
+        clone["url"] = f"https://www.tendersinfo.com/tenders_details/{710000 + i}.php"
+        first_page.append(clone)
+
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        if not _is_listing(request):
+            return httpx.Response(404)
+        body = _body_form(request)
+        country_code = body.get("country_code", "")
+        start = int(body.get("start", "0"))
+        if country_code != "UZ":
+            return httpx.Response(
+                200,
+                json={"draw": 1, "recordsTotal": 0, "recordsFiltered": 0, "data": []},
+            )
+        items = first_page if start in (0, 100) else []
+        return httpx.Response(
+            200,
+            json={
+                "draw": 1,
+                "recordsTotal": 200,
+                "recordsFiltered": 200,
+                "data": items,
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    connector = TendersinfoConnector(http_client_factory=_client_factory(transport))
+
+    result = await connector.fetch_latest()
+
+    uz_calls = [
+        r
+        for r in captured
+        if _is_listing(r) and _body_form(r).get("country_code") == "UZ"
+    ]
+    starts = sorted(int(_body_form(r).get("start", "0")) for r in uz_calls)
+    assert starts == [0, 100]
+    assert len(result.tenders) == 100
+
+
 async def test_fetch_latest_since_filter_keeps_unparseable_dates() -> None:
     items = _read_fixture("listing_uz.json")["data"]
     # The fixture's third row has date_c="" -- that's our unparseable

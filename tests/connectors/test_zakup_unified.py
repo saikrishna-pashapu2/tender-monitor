@@ -262,6 +262,40 @@ async def test_fetch_latest_paginates_until_since() -> None:
     assert {t.external_id for t in result.tenders} == {"1001"}
 
 
+async def test_fetch_latest_soft_since_keeps_late_new_lot_on_same_page() -> None:
+    old_iso = "2026-04-01T00:00:00Z"
+    new_iso = "2026-05-08T02:12:18Z"
+
+    listing_page_1 = {
+        "count": 4,
+        "next": None,
+        "previous": None,
+        "results": [
+            _build_lot(announcement_id=1002, lot_id=3, publish_iso=old_iso),
+            _build_lot(announcement_id=1003, lot_id=4, publish_iso=old_iso),
+            _build_lot(announcement_id=1001, lot_id=1, publish_iso=new_iso),
+            _build_lot(announcement_id=1001, lot_id=2, publish_iso=new_iso),
+        ],
+        "facets": {},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if _is_listing(request):
+            return httpx.Response(200, json=listing_page_1)
+        if _is_announcement(request):
+            ann_id = _announcement_id_from_url(request)
+            return httpx.Response(200, json=_build_announcement(announcement_id=ann_id))
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    connector = ZakupUnifiedConnector(http_client_factory=_client_factory(transport))
+    result = await connector.fetch_latest(
+        since=datetime(2026, 5, 1, tzinfo=UTC)
+    )
+
+    assert {t.external_id for t in result.tenders} == {"1001"}
+
+
 async def test_fetch_latest_handles_detail_404() -> None:
     listing = {
         "count": 2,
@@ -336,3 +370,33 @@ async def test_referer_header_is_sent(
     for request in captured:
         assert request.headers.get("referer") == expected_referer
         assert request.headers.get("accept") == "application/json"
+
+
+async def test_fetch_latest_stops_when_pagination_repeats_same_lots() -> None:
+    listing_page = {
+        "count": 50,
+        "next": "https://zakup.gov.kz/api/core/api/core/_lots/?offset=50",
+        "previous": None,
+        "results": [
+            _build_lot(announcement_id=5000 + idx, lot_id=6000 + idx)
+            for idx in range(50)
+        ],
+        "facets": {},
+    }
+    pages_requested: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if _is_listing(request):
+            pages_requested.append(request.url.params.get("offset"))
+            return httpx.Response(200, json=listing_page)
+        if _is_announcement(request):
+            ann_id = _announcement_id_from_url(request)
+            return httpx.Response(200, json=_build_announcement(announcement_id=ann_id))
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    connector = ZakupUnifiedConnector(http_client_factory=_client_factory(transport))
+    result = await connector.fetch_latest()
+
+    assert len(result.tenders) == 50
+    assert pages_requested == ["0", "50"]

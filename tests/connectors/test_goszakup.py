@@ -14,7 +14,9 @@ from tender_monitor.connectors.goszakup import (
     STATUS_MAPPING,
     GoszakupConnector,
     _parse_announcement,
+    _parse_documents_tab,
     _parse_listing_row,
+    _parse_lots_tab,
 )
 from tender_monitor.connectors.http import make_client
 from tender_monitor.core.enums import Country, Language, TenderStatus
@@ -50,6 +52,10 @@ def _is_announcement(request: httpx.Request) -> bool:
 
 def _announcement_id_from_url(request: httpx.Request) -> str:
     return request.url.path[len(ANNOUNCE_PATH_PREFIX) :]
+
+
+def _announcement_tab(request: httpx.Request) -> str | None:
+    return request.url.params.get("tab")
 
 
 def _wrap_listing(rows_html: str) -> str:
@@ -146,6 +152,68 @@ def _build_announcement_html(
     """
 
 
+def _build_documents_tab_html() -> str:
+    return """
+    <html><body>
+      <table class="table table-bordered">
+        <thead>
+          <tr>
+            <th>Наименование документа</th>
+            <th>Признак</th>
+            <th>&nbsp;</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Техническая спецификация</td>
+            <td>Да</td>
+            <td><a href="/ru/announce/download_file/17013627/spec.pdf">Перейти</a></td>
+          </tr>
+          <tr>
+            <td>Проект договора</td>
+            <td>Нет</td>
+            <td><a href="/ru/announce/download_file/17013627/contract.pdf">Перейти</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </body></html>
+    """
+
+
+def _build_lots_tab_html() -> str:
+    return """
+    <html><body>
+      <table class="table table-bordered">
+        <thead>
+          <tr>
+            <th>№</th>
+            <th>Наименование</th>
+            <th>Описание</th>
+            <th>Количество</th>
+            <th>Сумма</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td><a href="/ru/subpriceoffer/index/17013627/41804689">Услуги по мытью окон здания</a></td>
+            <td>Очистка окон, фасадов и связанных поверхностей</td>
+            <td>50</td>
+            <td>17 241.37</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td><a href="/ru/subpriceoffer/index/17013627/41804690">Услуги по уборке территории</a></td>
+            <td>Уборка прилегающей территории и вывоз мусора</td>
+            <td>10</td>
+            <td>12 000.00</td>
+          </tr>
+        </tbody>
+      </table>
+    </body></html>
+    """
+
+
 # ---------------------------------------------------------------------------
 # Listing/detail parsing
 # ---------------------------------------------------------------------------
@@ -206,6 +274,26 @@ def test_parse_announcement_extracts_all_fields() -> None:
     assert parsed["announcement_creator"] == "Оспанов Кайрош Бакитович"
 
 
+def test_parse_documents_tab_extracts_documents() -> None:
+    parsed = _parse_documents_tab(_build_documents_tab_html())
+    assert len(parsed) == 2
+    assert parsed[0]["name"] == "Техническая спецификация"
+    assert parsed[0]["signed_text"] == "Да"
+    assert parsed[0]["url"] == (
+        "https://goszakup.gov.kz/ru/announce/download_file/17013627/spec.pdf"
+    )
+
+
+def test_parse_lots_tab_extracts_announcement_lots() -> None:
+    parsed = _parse_lots_tab(_build_lots_tab_html())
+    assert len(parsed) == 2
+    assert parsed[0]["name_ru"] == "Услуги по мытью окон здания"
+    assert parsed[0]["description_ru"].startswith("Очистка окон")
+    assert parsed[0]["quantity_text"] == "50"
+    assert parsed[0]["amount"] == Decimal("17241.37")
+    assert parsed[0]["lot_url"].endswith("/17013627/41804689")
+
+
 # ---------------------------------------------------------------------------
 # Normalization
 # ---------------------------------------------------------------------------
@@ -244,6 +332,23 @@ def test_normalize_happy_path() -> None:
     assert upsert.source_url.endswith("/41804689")
     assert upsert.language is Language.ru
     assert upsert.raw_json["_lots"][0]["name_ru"] == upsert.title
+
+
+def test_normalize_keeps_announcement_documents_and_lots() -> None:
+    row = {
+        "lot_id": "41804689",
+        "lot_title": "Услуги по мытью окон здания",
+        "lot_detail_url": (
+            "https://goszakup.gov.kz/ru/subpriceoffer/index/17013627/41804689"
+        ),
+        "amount_text": "17 241.37",
+        "_documents": _parse_documents_tab(_build_documents_tab_html()),
+        "_announcement_lots": _parse_lots_tab(_build_lots_tab_html()),
+    }
+
+    upsert = GoszakupConnector()._normalize(row)
+    assert len(upsert.raw_json["_documents"]) == 2
+    assert len(upsert.raw_json["announcement_lots"]) == 2
 
 
 def test_normalize_missing_title_raises() -> None:
@@ -298,6 +403,7 @@ async def test_fetch_latest_full_pipeline() -> None:
     listing_html = _read_fixture("listing.html")
     announce_html = _read_fixture("announce_17013627.html")
     seen_announcements: set[str] = set()
+    tab_calls: list[tuple[str, str | None]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if _is_listing(request):
@@ -305,6 +411,12 @@ async def test_fetch_latest_full_pipeline() -> None:
         if _is_announcement(request):
             ann_id = _announcement_id_from_url(request)
             seen_announcements.add(ann_id)
+            tab = _announcement_tab(request)
+            tab_calls.append((ann_id, tab))
+            if tab == "documents":
+                return httpx.Response(200, text=_build_documents_tab_html())
+            if tab == "lots":
+                return httpx.Response(200, text=_build_lots_tab_html())
             if ann_id == "17013627":
                 return httpx.Response(200, text=announce_html)
             return httpx.Response(
@@ -325,18 +437,31 @@ async def test_fetch_latest_full_pipeline() -> None:
     for tender in result.tenders:
         assert tender.published_at is not None
         assert tender.deadline_at is not None
+        assert "_documents" in tender.raw_json
+        assert "announcement_lots" in tender.raw_json
+    assert ("17013627", "documents") in tab_calls
+    assert ("17013627", "lots") in tab_calls
 
 
 async def test_fetch_latest_dedups_announcement_fetches() -> None:
     listing_html = _read_fixture("listing.html")
     announce_html = _read_fixture("announce_17013627.html")
     announcement_calls: list[str] = []
+    documents_calls: list[str] = []
+    lots_calls: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if _is_listing(request):
             return httpx.Response(200, text=listing_html)
         if _is_announcement(request):
             ann_id = _announcement_id_from_url(request)
+            tab = _announcement_tab(request)
+            if tab == "documents":
+                documents_calls.append(ann_id)
+                return httpx.Response(200, text=_build_documents_tab_html())
+            if tab == "lots":
+                lots_calls.append(ann_id)
+                return httpx.Response(200, text=_build_lots_tab_html())
             announcement_calls.append(ann_id)
             if ann_id == "17013627":
                 return httpx.Response(200, text=announce_html)
@@ -353,6 +478,8 @@ async def test_fetch_latest_dedups_announcement_fetches() -> None:
     # 17013627 has TWO lots in the fixture; the detail URL must be
     # fetched exactly once across those two lots.
     assert announcement_calls.count("17013627") == 1
+    assert documents_calls.count("17013627") == 1
+    assert lots_calls.count("17013627") == 1
     # Other announcements: one fetch each (16994590, 16994577).
     assert sorted(set(announcement_calls)) == ["16994577", "16994590", "17013627"]
 
@@ -366,6 +493,11 @@ async def test_fetch_latest_handles_announcement_404() -> None:
             return httpx.Response(200, text=listing_html)
         if _is_announcement(request):
             ann_id = _announcement_id_from_url(request)
+            tab = _announcement_tab(request)
+            if tab == "documents":
+                return httpx.Response(200, text=_build_documents_tab_html())
+            if tab == "lots":
+                return httpx.Response(200, text=_build_lots_tab_html())
             if ann_id == "16994590":
                 return httpx.Response(404, text="not found")
             if ann_id == "17013627":
@@ -411,6 +543,11 @@ async def test_fetch_latest_stops_on_short_page() -> None:
             pages_requested.append(int(page_param) if page_param else None)
             return httpx.Response(200, text=listing_html)
         if _is_announcement(request):
+            tab = _announcement_tab(request)
+            if tab == "documents":
+                return httpx.Response(200, text=_build_documents_tab_html())
+            if tab == "lots":
+                return httpx.Response(200, text=_build_lots_tab_html())
             ann_id = _announcement_id_from_url(request)
             return httpx.Response(
                 200, text=_build_announcement_html(announcement_id=ann_id)
@@ -446,6 +583,11 @@ async def test_fetch_latest_soft_since_filter() -> None:
             pages_requested.append(int(page_param) if page_param else None)
             return httpx.Response(200, text=listing_html)
         if _is_announcement(request):
+            tab = _announcement_tab(request)
+            if tab == "documents":
+                return httpx.Response(200, text=_build_documents_tab_html())
+            if tab == "lots":
+                return httpx.Response(200, text=_build_lots_tab_html())
             ann_id = _announcement_id_from_url(request)
             # Every announcement says it was published in early April.
             return httpx.Response(
@@ -466,3 +608,41 @@ async def test_fetch_latest_soft_since_filter() -> None:
     # SINCE_OLD_THRESHOLD=10 consecutive olds the loop breaks; the
     # remaining 2 lots are never even considered.
     assert len(result.tenders) == 0
+
+
+async def test_fetch_latest_stops_when_pagination_repeats_same_lots() -> None:
+    rows = "".join(
+        _build_listing_row(
+            lot_id=f"700000{i}",
+            announcement_id=f"8800{i}",
+        )
+        for i in range(50)
+    )
+    listing_html = _wrap_listing(rows)
+    pages_requested: list[int | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if _is_listing(request):
+            page_param = request.url.params.get("page")
+            page_num = int(page_param) if page_param else None
+            pages_requested.append(page_num)
+            return httpx.Response(200, text=listing_html)
+        if _is_announcement(request):
+            tab = _announcement_tab(request)
+            if tab == "documents":
+                return httpx.Response(200, text=_build_documents_tab_html())
+            if tab == "lots":
+                return httpx.Response(200, text=_build_lots_tab_html())
+            ann_id = _announcement_id_from_url(request)
+            return httpx.Response(
+                200,
+                text=_build_announcement_html(announcement_id=ann_id),
+            )
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    connector = GoszakupConnector(http_client_factory=_client_factory(transport))
+    result = await connector.fetch_latest()
+
+    assert len(result.tenders) == 50
+    assert pages_requested == [1, 2]

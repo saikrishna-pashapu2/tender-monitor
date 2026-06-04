@@ -9,6 +9,18 @@
   "customer_name": "АО HUDUDIY  ELEKTR TARMOQLARI",
   "customer_tin": "306350099",
   "currency_codeabc": "UZS",
+  "tech_file_name": "202605012413139228.pdf",
+  "tech_file_path": "/files/2026/5/1/202605012413139228.pdf",
+  "tech_file_ext": "PDF",
+  "tech_file_sizes": 5404866.0,
+  "tech_doc_file_name": "202605055157966282.docx",
+  "tech_doc_file_path": "/files/2026/5/5/202605055157966282.docx",
+  "tech_doc_file_ext": "DOCX",
+  "tech_doc_file_sizes": 97466.0,
+  "contract_proform_file_name": "202605012413366160.doc",
+  "contract_proform_file_path": "/files/2026/5/1/202605012413366160.doc",
+  "contract_proform_file_ext": "DOC",
+  "contract_proform_file_sizes": 59904.0,
   "technical_description": "ХЭТ АЖ",
   "addon_description": "«Ҳудудий электр тармоқлари» АЖнинг IFRS SDS стандартлари асосида 2025-2026 йиллар учун иқлим стратегиясини ишлаб чиқиш ва барқарор ривожланиш бўйича ҳисобот тайёрлаш.",
   "budget_products": "[{\"Id\":1878197,\"Description\":\"«Ҳудудий электр тармоқлари» АЖ нинг — IFRS SDS стандартлари асосида 2025-2026 йиллар учун иқлим стратегиясини ишлаб чиқиш ва барқарор ривожланиш бўйича ҳисобот тайёрлаш.\"}]",
@@ -26,7 +38,7 @@
       "description": "GRI ва SASB стандартларига мувофиқ тайёрланган молиявий бўлмаган ҳисоботлар ва барқарор ривожланиш соҳасидаги ҳисоботларни профессионал тасдиқлаш тажрибаси."
     }
   ],
-  "fields": "[{\"Id\":2619951,\"Label\":\"GRI va SASB tajribasi\",\"Description\":\"GRI ва SASB стандартларига мувофиқ тайёрланган молиявий бўлмаган ҳисоботлар ва барқарор ривожланиш соҳасидаги ҳисоботларни профессионал тасдиқлаш тажрибаси.\"}]",
+  "fields": "[{\"Id\":2619951,\"Label\":\"GRI va SASB tajribasi\",\"Description\":\"GRI ва SASB стандартларига мувофиқ тайёрланган молиявий бўлмаган ҳисоботлар ва барқарор ривожланиш соҳасидаги ҳисоботларни профессионал тасдиқлаш тажрибаси.\",\"Form_Name\":\"Baholash shakli\",\"Form_File_Path\":\"/files/2026/5/9/ifrs-gri-form.pdf\"}]",
   "js_qualification_fields": [
     {
       "id": 917724,

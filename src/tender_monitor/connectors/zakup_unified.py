@@ -18,6 +18,11 @@ fetch:
 2. For each unique ``announcement_id``, GET ``/announcements/<id>/``.
 3. Attach the constituent lots under ``_lots`` and emit one row per
    announcement. ONE TENDER ROW = ONE ANNOUNCEMENT, never one lot.
+
+``since`` filtering is intentionally soft. The API is usually ordered
+newest-first, but we do not assume it is perfectly monotone across
+pages; instead we tolerate a run of older lots before stopping so
+later-positioned but still-relevant announcements are not dropped.
 """
 
 from __future__ import annotations
@@ -67,6 +72,7 @@ class ZakupUnifiedConnector(Connector):
     PAGE_SIZE: ClassVar[int] = 50
     MAX_PAGES: ClassVar[int] = 20
     SYSTEM_FILTER: ClassVar[str] = "1__2__3"
+    SINCE_OLD_THRESHOLD: ClassVar[int] = 10
 
     REQUIRED_HEADERS: ClassVar[dict[str, str]] = {
         "User-Agent": (
@@ -155,8 +161,10 @@ class ZakupUnifiedConnector(Connector):
         accumulated_lots: list[dict[str, Any]] = []
         crossed_since_boundary = False
         pages_walked = 0
+        consecutive_olds = 0
 
         async with self._make_client() as client:
+            seen_lot_ids: set[int] = set()
             for page_index in range(self.MAX_PAGES):
                 offset = page_index * self.PAGE_SIZE
                 data = await self._fetch_listing_page(client, offset)
@@ -165,21 +173,48 @@ class ZakupUnifiedConnector(Connector):
                 if not page_results:
                     break
 
+                fresh_lots = 0
                 if since is not None:
-                    in_window: list[dict[str, Any]] = []
                     for item in page_results:
+                        lot_id = item.get("id")
+                        if not isinstance(lot_id, int):
+                            continue
+                        if lot_id in seen_lot_ids:
+                            continue
+                        seen_lot_ids.add(lot_id)
+                        fresh_lots += 1
                         publish_raw = item.get("announcement_publish_date")
                         if publish_raw is None:
-                            in_window.append(item)
+                            accumulated_lots.append(item)
+                            consecutive_olds = 0
                             continue
                         if _parse_iso(publish_raw) >= since:
-                            in_window.append(item)
-                    accumulated_lots.extend(in_window)
-                    if len(in_window) < len(page_results):
-                        crossed_since_boundary = True
+                            accumulated_lots.append(item)
+                            consecutive_olds = 0
+                            continue
+                        consecutive_olds += 1
+                        if consecutive_olds >= self.SINCE_OLD_THRESHOLD:
+                            crossed_since_boundary = True
+                            break
+                    if crossed_since_boundary:
                         break
                 else:
-                    accumulated_lots.extend(page_results)
+                    for item in page_results:
+                        lot_id = item.get("id")
+                        if not isinstance(lot_id, int):
+                            continue
+                        if lot_id in seen_lot_ids:
+                            continue
+                        seen_lot_ids.add(lot_id)
+                        fresh_lots += 1
+                        accumulated_lots.append(item)
+
+                if page_results and fresh_lots == 0:
+                    logger.info(
+                        "zakup_unified.pagination_stalled",
+                        offset=offset,
+                    )
+                    break
 
                 if data.get("next") is None:
                     break

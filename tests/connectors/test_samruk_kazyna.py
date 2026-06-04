@@ -101,6 +101,14 @@ class _FakeBrowser:
             raise self.listing_error
         return list(self.listing)
 
+    async def fetch_listing_pages(
+        self, *, max_pages: int
+    ) -> list[dict[str, Any]]:
+        self.fetched_listing_count += 1
+        if self.listing_error is not None:
+            raise self.listing_error
+        return list(self.listing)
+
     async def fetch_advert(
         self, advert_id: int
     ) -> tuple[dict[str, Any], list[dict[str, Any]]] | None:
@@ -314,3 +322,40 @@ async def test_fetch_latest_dedupes_repeated_ids() -> None:
 
     # 401 only requested once despite appearing twice in the listing.
     assert browser.fetched_advert_ids == [401, 402]
+
+
+async def test_fetch_latest_uses_paginated_listing_results() -> None:
+    listing = [
+        _build_listing_item(advert_id=501, accept_begin="2026-05-08T10:00:00Z"),
+        _build_listing_item(advert_id=502, accept_begin="2026-05-08T10:00:00Z"),
+        _build_listing_item(advert_id=503, accept_begin="2026-05-08T10:00:00Z"),
+    ]
+    adverts: dict[int, Any] = {
+        501: (_build_advert_detail(advert_id=501), []),
+        502: (_build_advert_detail(advert_id=502), []),
+        503: (_build_advert_detail(advert_id=503), []),
+    }
+
+    class _PagedBrowser(_FakeBrowser):
+        def __init__(self) -> None:
+            super().__init__(listing=[], adverts=adverts)
+            self.max_pages_requested: int | None = None
+
+        async def fetch_listing(self) -> list[dict[str, Any]]:
+            raise AssertionError("connector should use fetch_listing_pages")
+
+        async def fetch_listing_pages(
+            self, *, max_pages: int
+        ) -> list[dict[str, Any]]:
+            self.fetched_listing_count += 1
+            self.max_pages_requested = max_pages
+            return list(listing)
+
+    browser = _PagedBrowser()
+    connector = SamrukKazynaConnector(browser_factory=_browser_factory(browser))
+
+    result = await connector.fetch_latest()
+
+    assert {t.external_id for t in result.tenders} == {"501", "502", "503"}
+    assert browser.max_pages_requested == connector.LISTING_MAX_PAGES
+    assert browser.fetched_advert_ids == [501, 502, 503]

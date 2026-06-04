@@ -2,7 +2,7 @@
 
 All offline; HTTP is exercised through ``httpx.MockTransport``. The
 fixture under ``tests/fixtures/uzbekistan_tenders/listing.html`` is
-a verbatim capture of the live homepage including the credit-rating
+a verbatim capture of the live listing page including the credit-rating
 tender we use for the end-to-end matcher check.
 """
 
@@ -23,13 +23,14 @@ from tender_monitor.connectors.http import make_client
 from tender_monitor.connectors.uzbekistan_tenders import (
     UzbekistanTendersConnector,
     _extract_cards,
+    _has_next_page,
     _parse_card,
     parse_value_text,
 )
 from tender_monitor.core.enums import Country, Language, TenderStatus
 from tender_monitor.matching import KeywordsConfig, match_tender
 
-LISTING_PATH = "/"
+LISTING_PATH = "/tenders.php"
 FIXTURES_DIR = (
     Path(__file__).parent.parent / "fixtures" / "uzbekistan_tenders"
 )
@@ -55,7 +56,7 @@ def _client_factory(
 
 
 def _is_listing(request: httpx.Request) -> bool:
-    return request.url.path == LISTING_PATH and request.method == "GET"
+    return request.url.path.startswith(LISTING_PATH) and request.method == "GET"
 
 
 def _credit_rating_card() -> dict[str, str]:
@@ -201,6 +202,22 @@ def test_extract_cards_filters_to_real_tenders() -> None:
         assert c["title"]
 
 
+def test_has_next_page_detects_pagination() -> None:
+    assert _has_next_page(_read_fixture()) is True
+
+
+def test_has_next_page_false_when_next_missing() -> None:
+    html = """
+    <html><body>
+      <ul class="pagination">
+        <li class="active"><a href="/tenders.php">1</a></li>
+        <li><a href="/tenders.php/2">2</a></li>
+      </ul>
+    </body></html>
+    """
+    assert _has_next_page(html) is False
+
+
 # ---------------------------------------------------------------------------
 # Normalization
 # ---------------------------------------------------------------------------
@@ -281,8 +298,10 @@ async def test_fetch_latest_full_pipeline() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured.append(request)
-        if _is_listing(request):
+        if request.url.path == LISTING_PATH:
             return httpx.Response(200, html=html)
+        if request.url.path == f"{LISTING_PATH}/2":
+            return httpx.Response(200, html="<html><body></body></html>")
         return httpx.Response(404)
 
     transport = httpx.MockTransport(handler)
@@ -297,14 +316,14 @@ async def test_fetch_latest_full_pipeline() -> None:
     assert result.partial_errors == []
     assert all(t.country is Country.UZ for t in result.tenders)
     assert all(t.language is Language.en for t in result.tenders)
-    # Single GET — no pagination, no detail fetches.
+    # The fixture advertises a next page, so we probe page 2 before stopping.
     listing_calls = [r for r in captured if _is_listing(r)]
-    assert len(listing_calls) == 1
+    assert [r.url.path for r in listing_calls] == [LISTING_PATH, f"{LISTING_PATH}/2"]
 
 
 async def test_fetch_latest_500_raises_fetch_error() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        if _is_listing(request):
+        if request.url.path == LISTING_PATH:
             return httpx.Response(500, text="boom")
         return httpx.Response(404)
 
@@ -350,7 +369,7 @@ async def test_fetch_latest_since_keeps_unparseable_deadlines() -> None:
     """
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if _is_listing(request):
+        if request.url.path == LISTING_PATH:
             return httpx.Response(200, html=synthetic_html)
         return httpx.Response(404)
 
@@ -366,3 +385,67 @@ async def test_fetch_latest_since_keeps_unparseable_deadlines() -> None:
     # 111 was 01 Jan 2020 (parseable, before since) → dropped.
     # 222 had "TBD" (unparseable) → kept.
     assert ids == {"222"}
+
+
+async def test_fetch_latest_paginates_and_dedupes_ids() -> None:
+    page1 = """
+    <html><body>
+      <div class="tender-card">
+        <a href="https://www.uzbekistantenders.com/tender/a.php">
+          <p class="tender-card-heading">Tender A</p>
+        </a>
+        <div class="row tender-card-content">
+          <div><p>UZT Ref No.: 111</p></div>
+          <div><p>Deadline: 10 Jun 2026</p></div>
+          <div>Tender Value: 100 UZS</div>
+          <div><a class="Viewbutton" href="https://www.uzbekistantenders.com/tender/a.php">View Details</a></div>
+        </div>
+      </div>
+      <ul class="pagination"><li><a href="/tenders.php/2">Next</a></li></ul>
+    </body></html>
+    """
+    page2 = """
+    <html><body>
+      <div class="tender-card">
+        <a href="https://www.uzbekistantenders.com/tender/b.php">
+          <p class="tender-card-heading">Tender B</p>
+        </a>
+        <div class="row tender-card-content">
+          <div><p>UZT Ref No.: 222</p></div>
+          <div><p>Deadline: 11 Jun 2026</p></div>
+          <div>Tender Value: 200 UZS</div>
+          <div><a class="Viewbutton" href="https://www.uzbekistantenders.com/tender/b.php">View Details</a></div>
+        </div>
+      </div>
+      <div class="tender-card">
+        <a href="https://www.uzbekistantenders.com/tender/a.php">
+          <p class="tender-card-heading">Tender A duplicate</p>
+        </a>
+        <div class="row tender-card-content">
+          <div><p>UZT Ref No.: 111</p></div>
+          <div><p>Deadline: 10 Jun 2026</p></div>
+          <div>Tender Value: 100 UZS</div>
+          <div><a class="Viewbutton" href="https://www.uzbekistantenders.com/tender/a.php">View Details</a></div>
+        </div>
+      </div>
+    </body></html>
+    """
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        if request.url.path == LISTING_PATH:
+            return httpx.Response(200, html=page1)
+        if request.url.path == f"{LISTING_PATH}/2":
+            return httpx.Response(200, html=page2)
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    connector = UzbekistanTendersConnector(
+        http_client_factory=_client_factory(transport)
+    )
+
+    result = await connector.fetch_latest()
+
+    assert {t.external_id for t in result.tenders} == {"111", "222"}
+    assert [r.url.path for r in captured] == [LISTING_PATH, f"{LISTING_PATH}/2"]

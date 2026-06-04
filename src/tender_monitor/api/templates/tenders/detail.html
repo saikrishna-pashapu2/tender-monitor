@@ -136,53 +136,133 @@
     </section>
   {% endif %}
 
-  {% macro field_row(label, value) -%}
-    <div>
-      <dt class="text-gray-500 text-xs uppercase tracking-wide">{{ label }}</dt>
-      <dd class="text-gray-900 mt-0.5 whitespace-pre-wrap break-words">
-        {%- if value is scalar -%}
-          {{ value|pretty_scalar }}
-        {%- elif value is list_of_scalars -%}
-          {{ value|pretty_list_of_scalars }}
-        {%- elif value is mapping -%}
-          <div class="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 rounded border border-gray-100 bg-gray-50 p-3">
-            {% for sub_key, sub_value in value.items()|sort %}
-              {{ field_row(sub_key|humanize_key, sub_value) }}
-            {% endfor %}
+  {% if documents %}
+    <section class="bg-white rounded-lg border border-gray-200 p-5 sm:p-6 mb-4">
+      <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+        Documents ({{ documents|length }})
+      </h2>
+      <div class="space-y-3">
+        {% for doc in documents %}
+          <article class="border border-gray-200 rounded-lg p-4 text-sm">
+            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+              <div class="min-w-0">
+                <div class="font-medium text-gray-900 break-words">
+                  {{ doc.name or "Document" }}
+                </div>
+                <div class="flex flex-wrap gap-2 mt-1 text-xs text-gray-500">
+                  {% if doc.category %}
+                    <span>{{ doc.category }}</span>
+                  {% endif %}
+                  {% if doc.ext %}
+                    <span class="uppercase">{{ doc.ext }}</span>
+                  {% endif %}
+                  {% if doc.size_bytes is not none %}
+                    <span>{{ doc.size_bytes|pretty_scalar }} bytes</span>
+                  {% endif %}
+                </div>
+              </div>
+              {% if doc.url %}
+                <a href="{{ doc.url }}"
+                   target="_blank"
+                   rel="noopener"
+                   class="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded border border-blue-200 text-blue-700 hover:bg-blue-50">
+                  <i data-lucide="file-down" class="w-4 h-4"></i> Open file
+                </a>
+              {% endif %}
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  {% macro render_value(value) -%}
+    {%- if value is scalar -%}
+      {{ value|pretty_scalar }}
+    {%- elif value is list_of_scalars -%}
+      {{ value|pretty_list_of_scalars }}
+    {%- elif value is mapping -%}
+      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {% for sub_key, sub_value in value.items()|sort %}
+          {{ field_row(sub_key|humanize_key, sub_value) }}
+        {% endfor %}
+      </dl>
+    {%- elif value is sequence and value is not string -%}
+      <div class="space-y-3">
+        {% for item in value %}
+          <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
+            {% if item is mapping %}
+              <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {% for sub_key, sub_value in item.items()|sort %}
+                  {{ field_row(sub_key|humanize_key, sub_value) }}
+                {% endfor %}
+              </dl>
+            {% else %}
+              <div class="text-sm text-gray-800 whitespace-pre-wrap break-words">{{ item|pretty_scalar }}</div>
+            {% endif %}
           </div>
-        {%- elif value is sequence and value is not string -%}
-          <ul class="mt-1 space-y-2">
-            {% for item in value %}
-              <li class="rounded border border-gray-100 bg-gray-50 p-3">
-                {% if item is mapping %}
-                  <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-                    {% for sub_key, sub_value in item.items()|sort %}
-                      {{ field_row(sub_key|humanize_key, sub_value) }}
-                    {% endfor %}
-                  </dl>
-                {% else %}
-                  {{ item|pretty_scalar }}
-                {% endif %}
-              </li>
-            {% endfor %}
-          </ul>
-        {%- else -%}
-          {{ value|pretty_scalar }}
-        {%- endif -%}
+        {% endfor %}
+      </div>
+    {%- else -%}
+      {{ value|pretty_scalar }}
+    {%- endif -%}
+  {%- endmacro %}
+
+  {% macro field_row(label, value) -%}
+    <div class="rounded-lg border border-gray-200 bg-white p-3">
+      <dt class="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">{{ label }}</dt>
+      <dd class="mt-2 text-sm text-gray-900 whitespace-pre-wrap break-words">
+        {{ render_value(value) }}
       </dd>
     </div>
   {%- endmacro %}
 
-  {% if extra_fields %}
+  {% if source_facts or source_sections %}
     <section class="bg-white rounded-lg border border-gray-200 p-5 sm:p-6 mb-4">
-      <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
-        All fields from source
-      </h2>
-      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
-        {% for key, value in extra_fields %}
-          {{ field_row(key|humanize_key, value) }}
-        {% endfor %}
-      </dl>
+      <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-5">
+        <div>
+          <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Source details</h2>
+          <p class="mt-1 text-sm text-gray-500">
+            Connector-specific fields grouped into readable sections instead of a raw payload dump.
+          </p>
+        </div>
+        <span class="inline-flex items-center self-start rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
+          {{ tender.source_name }}
+        </span>
+      </div>
+
+      {% if source_facts %}
+        <div class="mb-5">
+          <h3 class="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 mb-3">Quick fields</h3>
+          <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            {% for key, value in source_facts %}
+              {{ field_row(key|humanize_key, value) }}
+            {% endfor %}
+          </dl>
+        </div>
+      {% endif %}
+
+      {% if source_sections %}
+        <div class="space-y-4">
+          {% for key, value in source_sections %}
+            <section class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <h3 class="text-sm font-semibold text-gray-900 mb-3">{{ key|humanize_key }}</h3>
+              {{ render_value(value) }}
+            </section>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <details class="mt-5 rounded-xl border border-gray-200 bg-gray-50 group">
+        <summary class="flex items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-gray-700 hover:text-gray-900">
+          <span>Raw source payload</span>
+          <span class="text-xs text-gray-400 group-open:hidden">Show debug JSON</span>
+          <span class="text-xs text-gray-400 hidden group-open:inline">Hide debug JSON</span>
+        </summary>
+        <div class="border-t border-gray-200 px-4 py-4">
+          <pre class="overflow-x-auto rounded-lg bg-gray-900 p-4 text-xs leading-6 text-gray-100">{{ tender.raw_json|pretty_json }}</pre>
+        </div>
+      </details>
     </section>
   {% endif %}
 
@@ -197,7 +277,7 @@
             <div class="font-semibold text-gray-900 mb-3">
               Lot {{ loop.index }}{% set lot_name = lot.get("name") or lot.get("name_ru") or lot.get("title") %}{% if lot_name %} · {{ lot_name }}{% endif %}
             </div>
-            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {% for key, value in lot.items()|sort %}
                 {{ field_row(key|humanize_key, value) }}
               {% endfor %}
@@ -236,20 +316,20 @@
   <aside class="lg:w-80 lg:shrink-0">
     {% if related %}
       <div class="bg-white rounded-lg border border-gray-200 p-4 lg:sticky lg:top-20 flex flex-col"
-           style="max-height: calc(100vh - 6rem);">
+           style="max-height: calc(100vh - 7rem);">
         <div class="flex items-baseline justify-between mb-3 shrink-0">
           <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">
             More from {{ tender.source_name }}
           </h2>
           <span class="text-xs text-gray-400">{{ related|length }}</span>
         </div>
-        <ul class="space-y-3 overflow-y-auto pr-2 -mr-2 grow">
-          {% for r in related %}
-            {% set r_deadline = r.deadline_at|deadline_state %}
-            <li class="border-b border-gray-100 last:border-0 pb-3 last:pb-0">
-              <a href="/tenders/{{ r.id }}"
+          <ul class="space-y-3 overflow-y-auto pr-2 -mr-2 grow min-h-0">
+            {% for r in related %}
+              {% set r_deadline = r.deadline_at|deadline_state %}
+              <li class="rounded-lg border border-gray-200 p-3">
+                <a href="/tenders/{{ r.id }}"
                  class="block text-sm font-medium text-gray-900 hover:text-blue-700 leading-snug line-clamp-2">
-                {{ r.title }}
+                  {{ r.title }}
               </a>
               {% if r.buyer_name %}
                 <p class="text-xs text-gray-500 truncate mt-0.5" title="{{ r.buyer_name }}">
@@ -266,7 +346,7 @@
                   {% endfor %}
                 </div>
               {% endif %}
-              <div class="flex items-center justify-between text-xs text-gray-500 mt-1.5">
+              <div class="flex items-center justify-between text-xs text-gray-500 mt-2">
                 {% if r.published_at %}
                   <span title="Published {{ r.published_at|isoformat }}">{{ r.published_at|timeago }}</span>
                 {% else %}

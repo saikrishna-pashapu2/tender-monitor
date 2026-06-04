@@ -11,8 +11,9 @@ mechanics; this module just orchestrates listing → per-advert detail
 
 Shape notes:
   - Listing returns up to 10 items per page (the gateway hard-rejects
-    larger sizes). We only fetch page 0 in v1; the SPA only fires
-    page-1+ on user interaction we'd have to script separately.
+    larger sizes). We replay the captured listing request for
+    subsequent pages inside the authenticated browser context, so we
+    are no longer limited to page 0.
   - One advert = one tender. ``raw_json["_lots"]`` carries the lot
     rows so the keyword matcher's generic lot walker picks them up.
 """
@@ -36,6 +37,10 @@ logger = get_logger(__name__)
 
 class _BrowserProtocol(Protocol):
     async def fetch_listing(self) -> list[dict[str, Any]]: ...
+
+    async def fetch_listing_pages(
+        self, *, max_pages: int
+    ) -> list[dict[str, Any]]: ...
 
     async def fetch_advert(
         self, advert_id: int
@@ -68,6 +73,7 @@ def _default_browser_factory() -> AbstractAsyncContextManager[_BrowserProtocol]:
 @register
 class SamrukKazynaConnector(Connector):
     source_name: ClassVar[str] = "samruk_kazyna"
+    LISTING_MAX_PAGES: ClassVar[int] = 15
 
     def __init__(
         self,
@@ -92,7 +98,9 @@ class SamrukKazynaConnector(Connector):
 
         async with browser_cm as browser:
             try:
-                listing = await browser.fetch_listing()
+                listing = await browser.fetch_listing_pages(
+                    max_pages=self.LISTING_MAX_PAGES
+                )
             except Exception as exc:
                 raise FetchError(
                     f"samruk_kazyna listing failed: {type(exc).__name__}: {exc}"

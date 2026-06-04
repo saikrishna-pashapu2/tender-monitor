@@ -47,10 +47,10 @@ first UZ source):
   isn't documented; assuming "newest first" and breaking on the
   first older hit would silently drop legitimately newer tenders
   that happen to sit later in the page. We paginate to
-  ``MAX_PAGES`` then filter by ``publicated_at >= since`` after the
-  fact, keeping items whose ``publicated_at`` is null (we have no
-  basis to exclude — they may have changed state since the last
-  run).
+  a generous ``MAX_PAGES`` then filter by ``publicated_at >= since``
+  after the fact, keeping items whose ``publicated_at`` is null (we
+  have no basis to exclude — they may have changed state since the
+  last run).
 """
 
 from __future__ import annotations
@@ -152,7 +152,7 @@ class XtXaridConnector(Connector):
 
     LISTING_URL: ClassVar[str] = "https://api.xt-xarid.uz/rpc"
     PAGE_SIZE: ClassVar[int] = 50
-    MAX_PAGES: ClassVar[int] = 5
+    MAX_PAGES: ClassVar[int] = 20
     LISTING_FIELDS: ClassVar[list[str]] = [
         "green",
         "id",
@@ -250,6 +250,7 @@ class XtXaridConnector(Connector):
 
     async def _fetch_raw(self, since: datetime | None) -> list[dict[str, Any]]:
         accumulated: list[dict[str, Any]] = []
+        seen_external_ids: set[str] = set()
         pages_walked = 0
         async with self._make_client() as client:
             for page_index in range(self.MAX_PAGES):
@@ -258,7 +259,23 @@ class XtXaridConnector(Connector):
                 pages_walked = page_index + 1
                 if not page_items:
                     break
-                accumulated.extend(page_items)
+                new_items = 0
+                for item in page_items:
+                    item_id = item.get("id")
+                    external_id = str(item_id) if item_id is not None else ""
+                    if external_id and external_id in seen_external_ids:
+                        continue
+                    if external_id:
+                        seen_external_ids.add(external_id)
+                    accumulated.append(item)
+                    new_items += 1
+                if new_items == 0:
+                    logger.info(
+                        "xt_xarid.pagination_stalled",
+                        offset=offset,
+                        page=page_index + 1,
+                    )
+                    break
                 if len(page_items) < self.PAGE_SIZE:
                     break
 

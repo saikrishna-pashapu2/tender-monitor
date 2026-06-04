@@ -180,7 +180,13 @@ def test_parse_detail_extracts_lot_and_announcement() -> None:
 
     assert detail["delivery_places"]
     assert detail["delivery_places"][0]["country"] == "Казахстан"
-    assert len(detail["documents"]) == 5
+    assert len(detail["_documents"]) == 5
+    assert detail["_documents"][0]["name"] == "ПД_ ТР Сатпаева.docx"
+    assert detail["_documents"][0]["url"] == (
+        "https://zakup.nationalbank.kz/ru/files/download/"
+        "752e59e8d9a789bad39d1832be8280b5/?buyid=102968"
+    )
+    assert detail["_documents"][0]["ext"] == "DOCX"
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +229,8 @@ def test_normalize_happy_path() -> None:
     assert lots[0]["name_ru"] == upsert.title
     assert lots[0]["description_ru"] is not None
     assert "Сатпаева" in lots[0]["description_ru"]
+    assert len(upsert.raw_json["_documents"]) == 5
+    assert upsert.raw_json["_documents"][2]["ext"] == "XLSX"
 
 
 # ---------------------------------------------------------------------------
@@ -399,6 +407,31 @@ async def test_fetch_latest_stops_on_short_page() -> None:
     assert len(listing_calls) == 1
     assert "2" not in pages
     assert len(result.tenders) == 2
+
+
+async def test_fetch_latest_stops_when_listing_pages_repeat_same_ids() -> None:
+    repeated_listing = _wrap_rows_as_listing(
+        "".join(_build_listing_row(data_key=str(i)) for i in range(1, 51))
+    )
+    detail_html = _build_detail_html()
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        if _is_listing(request):
+            return httpx.Response(200, html=repeated_listing)
+        if _is_detail(request):
+            return httpx.Response(200, html=detail_html)
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    connector = NationalBankConnector(http_client_factory=_client_factory(transport))
+    result = await connector.fetch_latest()
+
+    listing_calls = [r for r in captured if _is_listing(r)]
+    pages = [r.url.params.get("page") for r in listing_calls]
+    assert pages == ["1", "2"]
+    assert len(result.tenders) == 50
 
 
 # ---------------------------------------------------------------------------

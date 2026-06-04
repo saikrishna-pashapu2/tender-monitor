@@ -2,16 +2,17 @@
 commercial procurement aggregator.
 
 Third HTML scraper (after mitwork and national_bank); second commercial
-aggregator (after tendersinfo). It's the sparsest source we ingest so
-far -- the homepage gives us title, ref number, deadline, and value;
-buyer name and published_at are simply not surfaced in v1.
+aggregator (after tendersinfo). We now crawl the real paginated tenders
+index at ``/tenders.php`` rather than the homepage teaser, which
+materially improves coverage. Even there, buyer name and published_at
+are not surfaced in v1.
 
 Shape notes that differ from the other connectors:
 
-- Single-page scrape: only the homepage is fetched. The page is a
-  "Latest Uzbekistan Tenders" teaser carrying ~10 cards; we don't
-  paginate and we don't fetch detail pages. If we later need depth,
-  follow-up probe.
+- Multi-page scrape: we fetch ``/tenders.php`` and then follow the
+  page-number pattern ``/tenders.php/<n>`` up to ``MAX_PAGES`` or
+  until the pagination block says there is no next page. We still do
+  not fetch detail pages in v1.
 - Country and language are hardcoded: ``Country.UZ`` /
   ``Language.en`` (the host is UZ-only by name and serves English).
 - ``buyer_name`` and ``published_at`` are always ``None`` -- not in
@@ -180,6 +181,15 @@ def _parse_card(card: Node) -> dict[str, Any] | None:
     }
 
 
+def _has_next_page(html: str) -> bool:
+    parser = HTMLParser(html)
+    for link in parser.css("ul.pagination a"):
+        label = _norm_text(link)
+        if label.casefold().startswith("next"):
+            return True
+    return False
+
+
 def _extract_cards(html: str) -> list[dict[str, Any]]:
     """Walk all ``<div class="tender-card">`` nodes; return only the
     well-formed ones (real tenders, not authority navigation cards).
@@ -201,7 +211,8 @@ def _extract_cards(html: str) -> list[dict[str, Any]]:
 class UzbekistanTendersConnector(Connector):
     source_name: ClassVar[str] = "uzbekistan_tenders"
 
-    LISTING_URL: ClassVar[str] = "https://www.uzbekistantenders.com/"
+    LISTING_URL: ClassVar[str] = "https://www.uzbekistantenders.com/tenders.php"
+    MAX_PAGES: ClassVar[int] = 20
 
     REQUIRED_HEADERS: ClassVar[dict[str, str]] = {
         "Accept": (
@@ -221,37 +232,62 @@ class UzbekistanTendersConnector(Connector):
 
     @with_retry(max_attempts=3)
     async def _do_listing_request(
-        self, client: httpx.AsyncClient
+        self, client: httpx.AsyncClient, page: int
     ) -> httpx.Response:
-        response = await client.get(self.LISTING_URL)
+        url = self.LISTING_URL if page <= 1 else f"{self.LISTING_URL}/{page}"
+        response = await client.get(url)
         response.raise_for_status()
         return response
 
-    async def _fetch_raw(self, since: datetime | None) -> list[dict[str, Any]]:
-        async with self._make_client() as client:
-            try:
-                response = await self._do_listing_request(client)
-            except (
-                httpx.TimeoutException,
-                httpx.NetworkError,
-                httpx.HTTPStatusError,
-            ) as exc:
-                raise FetchError(
-                    f"uzbekistan_tenders listing failed: "
-                    f"{type(exc).__name__}: {exc}"
-                ) from exc
+    async def _fetch_listing_page(
+        self, client: httpx.AsyncClient, page: int
+    ) -> tuple[list[dict[str, Any]], bool]:
+        try:
+            response = await self._do_listing_request(client, page)
+        except (
+            httpx.TimeoutException,
+            httpx.NetworkError,
+            httpx.HTTPStatusError,
+        ) as exc:
+            raise FetchError(
+                f"uzbekistan_tenders listing page={page} failed: "
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
 
-        cards = _extract_cards(response.text)
+        html = response.text
+        return _extract_cards(html), _has_next_page(html)
+
+    async def _fetch_raw(self, since: datetime | None) -> list[dict[str, Any]]:
+        pages_walked = 0
+        accumulated: list[dict[str, Any]] = []
+        seen_external_ids: set[str] = set()
+
+        async with self._make_client() as client:
+            for page in range(1, self.MAX_PAGES + 1):
+                cards, has_next = await self._fetch_listing_page(client, page)
+                pages_walked = page
+                if not cards:
+                    break
+                for card in cards:
+                    external_id = str(card.get("external_id") or "")
+                    if not external_id or external_id in seen_external_ids:
+                        continue
+                    seen_external_ids.add(external_id)
+                    accumulated.append(card)
+                if not has_next:
+                    break
+
         logger.info(
             "uzbekistan_tenders.listing_complete",
-            cards_collected=len(cards),
+            pages_walked=pages_walked,
+            cards_collected=len(accumulated),
         )
 
         if since is None:
-            return cards
+            return accumulated
 
         in_window: list[dict[str, Any]] = []
-        for card in cards:
+        for card in accumulated:
             deadline = parse_full_month_date(card.get("deadline_text"))
             # Keep cards whose deadline didn't parse -- no published
             # date means deadline is the only filter axis, and a
@@ -260,7 +296,7 @@ class UzbekistanTendersConnector(Connector):
                 in_window.append(card)
         logger.info(
             "uzbekistan_tenders.since_filter_applied",
-            input_items=len(cards),
+            input_items=len(accumulated),
             kept=len(in_window),
             since=since.isoformat(),
         )
@@ -312,6 +348,7 @@ class UzbekistanTendersConnector(Connector):
 __all__ = [
     "UzbekistanTendersConnector",
     "_extract_cards",
+    "_has_next_page",
     "_parse_card",
     "parse_value_text",
 ]

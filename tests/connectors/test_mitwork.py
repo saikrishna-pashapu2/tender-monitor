@@ -16,6 +16,7 @@ from tender_monitor.connectors.mitwork import (
     KZ_TZ,
     STATUS_MAPPING,
     MitworkConnector,
+    _parse_detail_page,
     _parse_row,
     parse_kz_local_datetime,
     parse_kzt_amount,
@@ -23,6 +24,7 @@ from tender_monitor.connectors.mitwork import (
 from tender_monitor.core.enums import Country, Language, TenderStatus
 
 LISTING_PATH = "/ru/publics/buys"
+DETAIL_PATH_PREFIX = "/ru/publics/buy/"
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "mitwork"
 
@@ -44,6 +46,10 @@ def _client_factory(
 
 def _is_listing(request: httpx.Request) -> bool:
     return request.url.path == LISTING_PATH
+
+
+def _is_detail(request: httpx.Request) -> bool:
+    return request.url.path.startswith(DETAIL_PATH_PREFIX)
 
 
 def _wrap_rows_as_listing(rows_html: str) -> str:
@@ -83,6 +89,7 @@ SHORT_LISTING_HTML = _wrap_rows_as_listing(
 EMPTY_LISTING_HTML = (
     '<html><body><table class="table"><tbody></tbody></table></body></html>'
 )
+DETAIL_HTML = _read_fixture("buy_192049.html")
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +244,38 @@ def test_normalize_missing_title_raises() -> None:
         MitworkConnector()._normalize(raw)
 
 
+def test_parse_detail_page_extracts_fields_documents_and_lots() -> None:
+    parsed = _parse_detail_page(DETAIL_HTML)
+
+    detail_fields = parsed["detail_fields"]
+    assert detail_fields["title_ru_detail"].startswith("Химическая обработка")
+    assert detail_fields["organizer_name"].startswith(
+        "ТОВАРИЩЕСТВО С ОГРАНИЧЕННОЙ"
+    )
+    assert detail_fields["organizer_url"].startswith(
+        "https://eep.mitwork.kz/ru/publics/subject/"
+    )
+    assert detail_fields["status_text_detail"] == "Опубликовано"
+
+    documents = parsed["_documents"]
+    assert len(documents) == 1
+    assert documents[0]["category"] == "Проекты договоров"
+    assert documents[0]["name"] == "contract_project_s_2026_191748_v2.pdf"
+    assert documents[0]["url"].startswith(
+        "https://eep.mitwork.kz/ru/files/download/"
+    )
+    assert documents[0]["ext"] == "PDF"
+
+    lots = parsed["_lots"]
+    assert len(lots) == 1
+    assert lots[0]["number"] == "694789-ОИ2"
+    assert lots[0]["classification_code"] == "016110.510.000001"
+    assert lots[0]["name_ru"].startswith("Услуги по обработке территорий")
+    assert lots[0]["description_ru"].startswith("Химическая обработка")
+    assert lots[0]["currency"] == "KZT"
+    assert lots[0]["total_amount"] == Decimal("2000000.00")
+
+
 # ---------------------------------------------------------------------------
 # Fetch-pipeline tests — MockTransport, no real HTTP
 # ---------------------------------------------------------------------------
@@ -256,6 +295,8 @@ async def test_fetch_latest_full_pipeline() -> None:
             if page in (None, "1"):
                 return httpx.Response(200, html=html)
             return httpx.Response(200, html=EMPTY_LISTING_HTML)
+        if _is_detail(request):
+            return httpx.Response(200, html=DETAIL_HTML)
         return httpx.Response(404)
 
     transport = httpx.MockTransport(handler)
@@ -271,6 +312,10 @@ async def test_fetch_latest_full_pipeline() -> None:
 
     listing_calls = [r for r in captured if _is_listing(r)]
     assert len(listing_calls) >= 1
+    detail_calls = [r for r in captured if _is_detail(r)]
+    assert len(detail_calls) == expected_rows
+    assert all(tender.raw_json.get("_documents") for tender in result.tenders)
+    assert all(tender.raw_json.get("_lots") for tender in result.tenders)
 
 
 async def test_fetch_latest_paginates_until_since() -> None:
@@ -281,6 +326,8 @@ async def test_fetch_latest_paginates_until_since() -> None:
         captured.append(request)
         if _is_listing(request):
             return httpx.Response(200, html=html)
+        if _is_detail(request):
+            return httpx.Response(200, html=DETAIL_HTML)
         return httpx.Response(404)
 
     transport = httpx.MockTransport(handler)
@@ -311,6 +358,8 @@ async def test_fetch_latest_stops_on_short_page() -> None:
         captured.append(request)
         if _is_listing(request):
             return httpx.Response(200, html=SHORT_LISTING_HTML)
+        if _is_detail(request):
+            return httpx.Response(200, html=DETAIL_HTML)
         return httpx.Response(404)
 
     transport = httpx.MockTransport(handler)
@@ -352,6 +401,28 @@ async def test_fetch_latest_empty_listing() -> None:
     assert result.raw_item_count == 0
     assert result.tenders == []
     assert result.partial_errors == []
+
+
+async def test_fetch_latest_continues_when_detail_fetch_fails() -> None:
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        if _is_listing(request):
+            return httpx.Response(200, html=SHORT_LISTING_HTML)
+        if _is_detail(request):
+            return httpx.Response(500, text="detail failed")
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    connector = MitworkConnector(http_client_factory=_client_factory(transport))
+    result = await connector.fetch_latest()
+
+    assert len(result.tenders) == 2
+    assert result.partial_errors == []
+    assert all(
+        "_detail_fetch_error" in tender.raw_json for tender in result.tenders
+    )
 
 
 def test_zoneinfo_almaty_offset_is_plus_five() -> None:

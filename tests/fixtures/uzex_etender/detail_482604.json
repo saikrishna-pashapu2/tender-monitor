@@ -9,6 +9,18 @@
   "customer_name": "АО O`ZBEKTELEKOM",
   "customer_tin": "203366731",
   "currency_codeabc": "UZS",
+  "tech_file_name": "202604233529711988.rar",
+  "tech_file_path": "/files/2026/4/23/202604233529711988.rar",
+  "tech_file_ext": "RAR",
+  "tech_file_sizes": 1079909.0,
+  "tech_doc_file_name": "202604233530012202.pdf",
+  "tech_doc_file_path": "tender/user-files/2026/4/23/202604233530012202.pdf",
+  "tech_doc_file_ext": "PDF",
+  "tech_doc_file_sizes": 125193.0,
+  "contract_proform_file_name": "202604233529805959.docx",
+  "contract_proform_file_path": "/files/2026/4/23/202604233529805959.docx",
+  "contract_proform_file_ext": "DOCX",
+  "contract_proform_file_sizes": 41620.0,
   "technical_description": "“O‘zbektelekom” AK ehtiyojlari uchun iqlim strategiyasini ishlab chiqish hamda dekarbonizatsiya rejasini tayyorlash xizmatlarini xarid qilish",
   "addon_description": "“O‘zbektelekom” AK ehtiyojlari uchun iqlim strategiyasini ishlab chiqish hamda dekarbonizatsiya rejasini tayyorlash xizmatlarini xarid qilish",
   "budget_products": "[{\"Id\":1864914,\"Description\":\"“O‘zbektelekom” AK ehtiyojlari uchun iqlim strategiyasini ishlab chiqish hamda dekarbonizatsiya rejasini tayyorlash xizmatlarini xarid qilish\\r\\n\"}]",
@@ -26,12 +38,12 @@
       "description": "Loyiha menejeri CFA ESG Investing sertifikatiga ega bo‘lishi lozim. SASB standartlari bo‘yicha mutaxassis IFRS Foundation tomonidan berilgan IFRS Fundamentals of Sustainability Accounting credential hamda ACCA sertifikatiga ega bo‘lishi lozim."
     }
   ],
-  "fields": "[{\"Id\":2610479,\"Label\":\"Ish tajribasi haqida ma'lumot\",\"Description\":\"Ishtirokchi barqaror rivojlanish bo‘yicha hisobotlarni yoki Global Reporting Initiative (GRI) standartlari va/yoki boshqa qo‘llaniladigan xalqaro moliyaviy bo‘lmagan hisobot standartlariga muvofiq tayyorlash va tasdiqlash bo‘yicha tajribaga ega bo‘lishi shart.\"}]",
+  "fields": "[{\"Id\":2610479,\"Label\":\"Ish tajribasi haqida ma'lumot\",\"Description\":\"Ishtirokchi barqaror rivojlanish bo‘yicha hisobotlarni yoki Global Reporting Initiative (GRI) standartlari va/yoki boshqa qo‘llaniladigan xalqaro moliyaviy bo‘lmagan hisobot standartlariga muvofiq tayyorlash va tasdiqlash bo‘yicha tajribaga ega bo‘lishi shart.\",\"Form_Name\":\"4-ilova\",\"Form_File_Path\":\"tender/user-files/2026/4/23/a441a3ee-8bd0-4f65-8603-45d5df4fce9c.docx\"}]",
   "js_qualification_fields": [
     {
       "id": 906009,
       "name": "Коррупция кўринишларига йўл қўймаслик бўйича ариза."
     }
   ],
-  "qualification_fields": "[{\"Id\":906009,\"Name\":\"Коррупция кўринишларига йўл қўймаслик бўйича ариза.\"}]"
+  "qualification_fields": "[{\"Id\":906009,\"Name\":\"Коррупция кўринишларига йўл қўймаслик бўйича ариза.\",\"File_Path\":\"tender/user-files/2026/4/23/a47ca31e-f84e-4292-bc21-9681a17fbcd1.docx\"}]"
 }

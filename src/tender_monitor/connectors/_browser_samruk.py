@@ -18,8 +18,10 @@ returns to plain ``requests``/``httpx``.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from collections.abc import Callable
+from copy import deepcopy
 from types import TracebackType
 from typing import Any
 
@@ -46,6 +48,31 @@ SPA_ENTRY = "https://zakup.sk.kz/#/ext"
 SETTLE_SECONDS = 3.0
 # How long to wait for a clicked card to trigger its detail XHR.
 CARD_CLICK_TIMEOUT = 15.0
+DEFAULT_PAGE_SIZE = 10
+PAGINATION_PAGE_KEYS = {
+    "page",
+    "pageindex",
+    "pagenumber",
+    "pagenum",
+    "currentpage",
+    "current",
+    "index",
+}
+PAGINATION_SIZE_KEYS = {
+    "size",
+    "pagesize",
+    "page_size",
+    "limit",
+    "rows",
+    "perpage",
+    "per_page",
+}
+PAGINATION_OFFSET_KEYS = {
+    "offset",
+    "start",
+    "skip",
+    "from",
+}
 
 
 def _path_of(url: str) -> str:
@@ -64,6 +91,95 @@ def _is_lots(url: str) -> bool:
 
 def _is_advert(url: str) -> bool:
     return bool(_DETAIL_PATH_RE.match(_path_of(url)))
+
+
+def _coerce_json_object(text: str | None) -> dict[str, Any] | None:
+    if not text:
+        return None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _find_first_numeric(
+    value: Any, names: set[str]
+) -> tuple[list[str | int], int] | None:
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            normalized = str(key).replace("_", "").casefold()
+            if normalized in names and isinstance(nested, int):
+                return [key], nested
+            found = _find_first_numeric(nested, names)
+            if found is not None:
+                path, number = found
+                return [key, *path], number
+    elif isinstance(value, list):
+        for index, nested in enumerate(value):
+            found = _find_first_numeric(nested, names)
+            if found is not None:
+                path, number = found
+                return [index, *path], number
+    return None
+
+
+def _set_at_path(root: Any, path: list[str | int], value: int) -> bool:
+    current = root
+    for segment in path[:-1]:
+        if isinstance(segment, int):
+            if not isinstance(current, list) or segment >= len(current):
+                return False
+            current = current[segment]
+        else:
+            if not isinstance(current, dict) or segment not in current:
+                return False
+            current = current[segment]
+
+    last = path[-1]
+    if isinstance(last, int):
+        if not isinstance(current, list) or last >= len(current):
+            return False
+        current[last] = value
+        return True
+    if not isinstance(current, dict):
+        return False
+    current[last] = value
+    return True
+
+
+def _build_listing_request_body(
+    template: dict[str, Any],
+    *,
+    page_number: int,
+) -> dict[str, Any] | None:
+    body = deepcopy(template)
+
+    page_field = _find_first_numeric(body, PAGINATION_PAGE_KEYS)
+    size_field = _find_first_numeric(body, PAGINATION_SIZE_KEYS)
+    offset_field = _find_first_numeric(body, PAGINATION_OFFSET_KEYS)
+
+    if page_field is None and offset_field is None:
+        return None
+
+    page_size = (
+        size_field[1]
+        if size_field is not None and size_field[1] > 0
+        else DEFAULT_PAGE_SIZE
+    )
+
+    if page_field is not None:
+        page_path, initial_page = page_field
+        if not _set_at_path(body, page_path, initial_page + page_number):
+            return None
+
+    if offset_field is not None:
+        offset_path, initial_offset = offset_field
+        next_offset = initial_offset + page_number * page_size
+        if not _set_at_path(body, offset_path, next_offset):
+            return None
+
+    return body
 
 
 class SamrukKazynaBrowser:
@@ -133,6 +249,9 @@ class SamrukKazynaBrowser:
             await asyncio.sleep(SETTLE_SECONDS)
 
     async def fetch_listing(self) -> list[dict[str, Any]]:
+        return await self.fetch_listing_pages(max_pages=1)
+
+    async def fetch_listing_pages(self, *, max_pages: int) -> list[dict[str, Any]]:
         """Navigate to /#/ext and return the listing JSON body.
 
         Raises RuntimeError if the listing XHR did not fire within the
@@ -147,6 +266,12 @@ class SamrukKazynaBrowser:
             if _is_listing(response.url) and "listing" not in captures:
                 try:
                     captures["listing"] = await response.json()
+                    captures["listing_url"] = response.url
+                    request = response.request
+                    captures["listing_request_body"] = _coerce_json_object(
+                        request.post_data
+                    )
+                    captures["listing_request_headers"] = dict(request.headers)
                 except Exception as exc:
                     logger.warning(
                         "samruk_kazyna.browser.listing_parse_failed",
@@ -168,7 +293,86 @@ class SamrukKazynaBrowser:
                 "samruk_kazyna browser: listing XHR not captured "
                 "or returned non-list payload"
             )
-        return listing
+
+        aggregated = list(listing)
+        if max_pages <= 1:
+            return aggregated
+
+        listing_url = captures.get("listing_url")
+        template_body = captures.get("listing_request_body")
+        raw_headers = captures.get("listing_request_headers") or {}
+        if not isinstance(listing_url, str) or not isinstance(template_body, dict):
+            logger.warning(
+                "samruk_kazyna.browser.pagination_unavailable",
+                have_url=isinstance(listing_url, str),
+                have_body=isinstance(template_body, dict),
+            )
+            return aggregated
+
+        headers = {
+            key: value
+            for key, value in raw_headers.items()
+            if key.casefold()
+            not in {"content-length", "host", "cookie", "origin", "referer"}
+        }
+
+        for page_number in range(1, max_pages):
+            request_body = _build_listing_request_body(
+                template_body,
+                page_number=page_number,
+            )
+            if request_body is None:
+                logger.warning(
+                    "samruk_kazyna.browser.pagination_body_unavailable",
+                    page_number=page_number,
+                )
+                break
+
+            payload = await page.evaluate(
+                """
+                async ({url, headers, body}) => {
+                  const response = await fetch(url, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify(body),
+                    credentials: 'include',
+                  });
+                  let data = null;
+                  try {
+                    data = await response.json();
+                  } catch (error) {
+                    data = null;
+                  }
+                  return { status: response.status, data };
+                }
+                """,
+                {
+                    "url": listing_url,
+                    "headers": headers,
+                    "body": request_body,
+                },
+            )
+            if not isinstance(payload, dict):
+                logger.warning(
+                    "samruk_kazyna.browser.pagination_invalid_payload",
+                    page_number=page_number,
+                )
+                break
+            page_items = payload.get("data")
+            if payload.get("status") != 200 or not isinstance(page_items, list):
+                logger.warning(
+                    "samruk_kazyna.browser.pagination_request_failed",
+                    page_number=page_number,
+                    status=payload.get("status"),
+                )
+                break
+            if not page_items:
+                break
+            aggregated.extend(page_items)
+            if len(page_items) < DEFAULT_PAGE_SIZE:
+                break
+
+        return aggregated
 
     async def fetch_advert(
         self, advert_id: int

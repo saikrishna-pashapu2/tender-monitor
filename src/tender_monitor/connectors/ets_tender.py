@@ -8,9 +8,11 @@ Shape notes that differ from the other HTML scrapers:
   ingest is implicitly ``TenderStatus.open``; archived tenders live at
   ``?show=archive`` and are out of scope.
 - The listing carries dates inline (``Опубликовано`` / ``Актуально до``
-  columns) so the ``since`` window can be enforced at listing level — we
-  stop on the first row whose ``published_at`` is older than the cutoff
-  and don't request the next page. "Hard" since-filter, not soft.
+  columns) so the ``since`` window can be enforced at listing level. We
+  still keep the filter soft rather than stopping on the first old row:
+  ETS-Tender's sort is usually newest-first, but a strict monotonicity
+  assumption is too brittle if pinned/reopened tenders appear out of
+  order.
 - The listing does NOT carry amount, ENSTRU code, or the full
   description. Those live on the detail page, so we always fetch
   ``/market/<slug>/tender-<id>/`` per listing row.
@@ -55,6 +57,10 @@ logger = get_logger(__name__)
 
 
 _TENDER_ID_RE = re.compile(r"/tender-(\d+)/")
+_FILE_EXT_RE = re.compile(
+    r"\.(?:pdf|doc|docx|xls|xlsx|zip|rar|7z|rtf|txt|jpg|jpeg|png)$",
+    re.IGNORECASE,
+)
 
 # Labels on the detail-page tables that we project into typed keys.
 # Anything not in this map still survives in raw_json (we keep the raw
@@ -83,6 +89,42 @@ def _strip_fragment(href: str) -> str:
 
 def _norm_text(node: Node | None) -> str:
     return " ".join(node.text().split()) if node is not None else ""
+
+
+def _extract_documents(parser: HTMLParser) -> list[dict[str, Any]]:
+    documents: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+
+    for link in parser.css("a[href]"):
+        href = (link.attributes.get("href") or "").strip()
+        if not href:
+            continue
+        normalized_href = href.split("?", 1)[0]
+        normalized_href = normalized_href.split("#", 1)[0]
+        if not _FILE_EXT_RE.search(normalized_href):
+            continue
+
+        absolute_url = (
+            href
+            if href.startswith("http://") or href.startswith("https://")
+            else EtsTenderConnector.BASE_URL + href
+        )
+        if absolute_url in seen_urls:
+            continue
+        seen_urls.add(absolute_url)
+
+        name = _norm_text(link) or normalized_href.rsplit("/", 1)[-1]
+        documents.append(
+            {
+                "category": None,
+                "name": name or "Document",
+                "url": absolute_url,
+                "ext": normalized_href.rsplit(".", 1)[-1].upper(),
+                "source": "detail_page",
+            }
+        )
+
+    return documents
 
 
 def _parse_listing_row(tr: Node) -> dict[str, Any] | None:
@@ -191,6 +233,7 @@ def _parse_detail(html: str) -> dict[str, Any]:
     out["vat_note"] = None
     out["organizer_link_text"] = None
     out["organizer_link_url"] = None
+    out["_documents"] = []
 
     # Title: only the dedicated h2.tender-title element. Broader
     # fallbacks (h1 / any h2) tend to pick up anti-bot challenge
@@ -251,6 +294,10 @@ def _parse_detail(html: str) -> dict[str, Any]:
         if end > start:
             out["vat_note"] = total_price[start : end + 1]
 
+    documents = _extract_documents(parser)
+    if documents:
+        out["_documents"] = documents
+
     return out
 
 
@@ -261,8 +308,9 @@ class EtsTenderConnector(Connector):
     BASE_URL: ClassVar[str] = "https://www.ets-tender.kz"
     LISTING_URL: ClassVar[str] = f"{BASE_URL}/market/"
     LISTING_PARAMS: ClassVar[dict[str, str]] = {"show": "actual"}
-    MAX_PAGES: ClassVar[int] = 5
+    MAX_PAGES: ClassVar[int] = 20
     PAGE_SIZE_HINT: ClassVar[int] = 10
+    SINCE_OLD_THRESHOLD: ClassVar[int] = 10
 
     REQUIRED_HEADERS: ClassVar[dict[str, str]] = {
         "Accept": (
@@ -377,27 +425,44 @@ class EtsTenderConnector(Connector):
         in_window: list[dict[str, Any]] = []
         stopped_on_since = False
         pages_walked = 0
+        consecutive_olds = 0
 
         async with self._make_client() as client:
+            seen_external_ids: set[str] = set()
             for page in range(1, self.MAX_PAGES + 1):
                 page_rows = await self._fetch_listing_page(client, page)
                 pages_walked = page
                 if not page_rows:
                     break
 
+                fresh_rows = 0
                 for row in page_rows:
+                    external_id = row.get("external_id")
+                    if not isinstance(external_id, str) or not external_id:
+                        continue
+                    if external_id in seen_external_ids:
+                        continue
+                    seen_external_ids.add(external_id)
+                    fresh_rows += 1
                     published = parse_kz_local_datetime_dmy(
                         row.get("published_text")
                     )
                     if since is not None and published is not None and published < since:
-                        # Newest-first ordering: once we cross the
-                        # boundary we're done — no later row on this
-                        # page (or any subsequent page) can be newer.
-                        stopped_on_since = True
-                        break
+                        consecutive_olds += 1
+                        if consecutive_olds >= self.SINCE_OLD_THRESHOLD:
+                            stopped_on_since = True
+                            break
+                        continue
+                    consecutive_olds = 0
                     in_window.append(row)
 
                 if stopped_on_since:
+                    break
+                if page_rows and fresh_rows == 0:
+                    logger.info(
+                        "ets_tender.pagination_stalled",
+                        page=page,
+                    )
                     break
                 if len(page_rows) < self.PAGE_SIZE_HINT:
                     # Short page → almost certainly the last page.
@@ -473,6 +538,9 @@ class EtsTenderConnector(Connector):
                 ),
             }
         ]
+        documents = raw.get("_documents")
+        if isinstance(documents, list) and documents:
+            raw_json["_documents"] = documents
 
         return TenderUpsert(
             source_name=self.source_name,

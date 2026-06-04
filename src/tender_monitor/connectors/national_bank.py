@@ -12,8 +12,8 @@ Shape notes that differ from MITWORK:
   page for every listing row. With ~10 new lots/day and MAX_PAGES=3
   the per-run cost is ~150 detail fetches.
 - The detail page embeds the announcement info (start/end, organizer,
-  procurement method, status), so one fetch per lot is enough — no
-  separate announcement hop.
+  procurement method, status) plus the document table, so one fetch
+  per lot is enough — no separate announcement hop.
 
 `since` filtering is "soft": because newer lot ids can be attached to
 older announcements, we don't stop at the first lot whose announcement
@@ -266,9 +266,9 @@ def _extract_delivery_places(tree: HTMLParser) -> list[dict[str, str]]:
     return places
 
 
-def _extract_documents(tree: HTMLParser) -> list[dict[str, str]]:
-    """Pull the document table rows: category, name, size, uploaded_at, hash."""
-    docs: list[dict[str, str]] = []
+def _extract_documents(tree: HTMLParser) -> list[dict[str, str | None]]:
+    """Pull the document table rows in the shared UI-friendly shape."""
+    docs: list[dict[str, str | None]] = []
     target_h3: Node | None = None
     for h in tree.css("h3"):
         if "Документы" in h.text():
@@ -282,15 +282,31 @@ def _extract_documents(tree: HTMLParser) -> list[dict[str, str]]:
             table = sibling.css_first("table")
             if table is not None:
                 for tr in table.css("tbody tr"):
-                    cells = [_td_text(td) for td in tr.css("td")]
+                    td_nodes = tr.css("td")
+                    cells = [_td_text(td) for td in td_nodes]
                     if len(cells) >= 5:
+                        download_link = (
+                            td_nodes[5].css_first("a")
+                            if len(td_nodes) > 5
+                            else None
+                        )
+                        download_url = None
+                        if download_link is not None:
+                            href = (download_link.attributes.get("href") or "").strip()
+                            download_url = href or None
+                        ext = None
+                        if "." in cells[1]:
+                            ext = cells[1].rsplit(".", 1)[-1].strip().upper() or None
                         docs.append(
                             {
                                 "category": cells[0],
                                 "name": cells[1],
-                                "size": cells[2],
-                                "uploaded_at": cells[3],
+                                "size_text": cells[2],
+                                "uploaded_at_text": cells[3],
                                 "hash": cells[4],
+                                "url": download_url,
+                                "ext": ext,
+                                "source": "detail_page",
                             }
                         )
                 break
@@ -364,7 +380,7 @@ def _parse_detail(html: str) -> dict[str, Any]:
         "organizer_email": ann_fields.get("organizer_email"),
         "procurement_method": ann_fields.get("procurement_method"),
         "announcement_status": ann_fields.get("announcement_status"),
-        "documents": _extract_documents(tree),
+        "_documents": _extract_documents(tree),
     }
 
 
@@ -389,7 +405,7 @@ class NationalBankConnector(Connector):
     DETAIL_URL_TEMPLATE: ClassVar[str] = (
         "https://zakup.nationalbank.kz/ru/publics/lot/{external_id}"
     )
-    MAX_PAGES: ClassVar[int] = 3  # 50 × 3 = 150 lots/run; ample for ~10/day
+    MAX_PAGES: ClassVar[int] = 10  # 50 × 10 = 500 lots/run
     PAGE_SIZE: ClassVar[int] = 50  # server-fixed
     # See `_fetch_raw` for the rationale: newer lot ids can sit on older
     # announcements, so we don't stop at the first old hit — only after
@@ -474,12 +490,28 @@ class NationalBankConnector(Connector):
         listing_rows: list[dict[str, Any]] = []
         pages_walked = 0
         async with self._make_client() as client:
+            seen_listing_ids: set[str] = set()
             for page in range(1, self.MAX_PAGES + 1):
                 page_rows = await self._fetch_listing_page(client, page)
                 pages_walked = page
                 if not page_rows:
                     break
-                listing_rows.extend(page_rows)
+                fresh_rows = 0
+                for row in page_rows:
+                    external_id = row.get("data_key")
+                    if not isinstance(external_id, str) or not external_id:
+                        continue
+                    if external_id in seen_listing_ids:
+                        continue
+                    seen_listing_ids.add(external_id)
+                    listing_rows.append(row)
+                    fresh_rows += 1
+                if page_rows and fresh_rows == 0:
+                    logger.info(
+                        "national_bank.pagination_stalled",
+                        page=page,
+                    )
+                    break
                 if len(page_rows) < self.PAGE_SIZE:
                     break
 
@@ -588,6 +620,9 @@ class NationalBankConnector(Connector):
                 "description_ru": raw.get("characteristic_ru"),
             }
         ]
+        documents = raw.get("_documents")
+        if isinstance(documents, list) and documents:
+            raw_json["_documents"] = documents
 
         return TenderUpsert(
             source_name=self.source_name,

@@ -95,6 +95,8 @@ def test_detail_endpoint_returns_200_for_existing(client: TestClient) -> None:
     assert resp.status_code == 200
     assert "Open at source" in resp.text
     assert "Why this matched" in resp.text
+    assert "Source details" in resp.text
+    assert "Raw source payload" in resp.text
 
 
 def test_detail_endpoint_renders_related_sidebar(client: TestClient) -> None:
@@ -105,6 +107,15 @@ def test_detail_endpoint_renders_related_sidebar(client: TestClient) -> None:
     resp = client.get(f"/tenders/{tender_id}")
     assert resp.status_code == 200
     assert "More from goszakup" in resp.text
+
+
+def test_detail_endpoint_renders_documents_section(client: TestClient) -> None:
+    tender_id = _xt_xarid_tender_id(client)
+    resp = client.get(f"/tenders/{tender_id}")
+    assert resp.status_code == 200
+    assert "Documents (1)" in resp.text
+    assert "climate-strategy.pdf" in resp.text
+    assert "Open file" in resp.text
 
 
 def test_detail_endpoint_includes_unmatched_in_sidebar(client: TestClient) -> None:
@@ -210,3 +221,12 @@ def _credit_rating_tender_id(client: TestClient) -> str:
         if entry["external_id"] == "g-1":
             return entry["id"]
     raise AssertionError("seeded credit-rating tender g-1 was not returned")
+
+
+def _xt_xarid_tender_id(client: TestClient) -> str:
+    resp = client.get("/api/tenders?source=xt-xarid&matched=all&per_page=100")
+    resp.raise_for_status()
+    for entry in resp.json()["tenders"]:
+        if entry["external_id"] == "x-1":
+            return entry["id"]
+    raise AssertionError("seeded xt-xarid tender x-1 was not returned")

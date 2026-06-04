@@ -42,7 +42,9 @@ Data-quality artifacts the parser handles:
 - The same upstream tender can appear under multiple
   ``site_tender_id`` values because the aggregator splits by
   region/sector. We accept the duplication; cross-source dedup is a
-  separate concern.
+  separate concern. Exact repeated rows within the same crawl,
+  however, are deduped by ``url`` (fallback ``site_tender_id``) so
+  pagination loops do not keep emitting the same aggregator row.
 """
 
 from __future__ import annotations
@@ -122,7 +124,7 @@ class TendersinfoConnector(Connector):
     )
     COUNTRY_CODES: ClassVar[tuple[str, ...]] = ("KZ", "UZ")
     PAGE_SIZE: ClassVar[int] = 100
-    MAX_PAGES: ClassVar[int] = 5  # safety bound; live totals ~95/country
+    MAX_PAGES: ClassVar[int] = 20
 
     # The DataTables protocol is positional: every column we ask the
     # server to send back gets a ``columns[i][*]`` block. We copy the
@@ -293,6 +295,7 @@ class TendersinfoConnector(Connector):
         self, client: httpx.AsyncClient, country_code: str
     ) -> list[dict[str, Any]]:
         collected: list[dict[str, Any]] = []
+        seen_keys: set[str] = set()
         for page_index in range(self.MAX_PAGES):
             start = page_index * self.PAGE_SIZE
             payload = await self._fetch_country_page(
@@ -306,8 +309,30 @@ class TendersinfoConnector(Connector):
                 )
             if not items:
                 break
-            collected.extend(items)
-            total = payload.get("recordsTotal") or 0
+            fresh_items = 0
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                dedupe_key = str(
+                    item.get("url")
+                    or item.get("site_tender_id")
+                    or ""
+                ).strip()
+                if not dedupe_key or dedupe_key in seen_keys:
+                    continue
+                seen_keys.add(dedupe_key)
+                collected.append(item)
+                fresh_items += 1
+            if items and fresh_items == 0:
+                logger.info(
+                    "tendersinfo.pagination_stalled",
+                    country=country_code,
+                    start=start,
+                )
+                break
+            total = payload.get("recordsTotal")
+            if not isinstance(total, int):
+                total = payload.get("recordsFiltered")
             if isinstance(total, int) and (page_index + 1) * self.PAGE_SIZE >= total:
                 break
         logger.info(

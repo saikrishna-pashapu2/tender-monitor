@@ -14,7 +14,7 @@ from tender_monitor.core.enums import (
     TenderStatus,
 )
 from tender_monitor.core.models import Tender
-from tender_monitor.core.schemas import FeedbackCreate, TenderSummary
+from tender_monitor.core.schemas import FeedbackCreate, TenderSummary, TenderUpsert
 
 
 def test_tender_summary_from_orm() -> None:
@@ -75,3 +75,27 @@ def test_feedback_create_validation() -> None:
         FeedbackCreate.model_validate(
             {"tender_id": str(tender_id), "verdict": "not_a_verdict"}
         )
+
+
+def test_tender_upsert_coerces_raw_json_to_json_safe_values() -> None:
+    upsert = TenderUpsert(
+        source_name="mitwork",
+        external_id="T-1",
+        title="Test",
+        country=Country.KZ,
+        status=TenderStatus.open,
+        source_url="https://example.test/T-1",
+        language=Language.ru,
+        raw_json={
+            "amount": Decimal("123.45"),
+            "nested": {
+                "seen_at": datetime(2026, 6, 1, 12, 0, tzinfo=UTC),
+                "items": [Decimal("7.50"), uuid4()],
+            },
+        },
+    )
+
+    assert upsert.raw_json["amount"] == "123.45"
+    assert upsert.raw_json["nested"]["seen_at"] == "2026-06-01T12:00:00+00:00"
+    assert upsert.raw_json["nested"]["items"][0] == "7.50"
+    assert isinstance(upsert.raw_json["nested"]["items"][1], str)
