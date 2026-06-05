@@ -518,25 +518,42 @@ class GoszakupConnector(Connector):
 
     async def _fetch_raw(self, since: datetime | None) -> list[dict[str, Any]]:
         listing_rows: list[dict[str, Any]] = []
+        known = self._known_external_ids or set()
         async with self._make_client() as client:
             seen_lot_ids: set[str] = set()
+            skipped_known_count = 0
             for page in range(1, self.MAX_PAGES + 1):
                 page_rows = await self._fetch_listing_page(client, page)
                 fresh_rows = 0
+                page_known_rows = 0
+                page_duplicate_rows = 0
                 for row in page_rows:
                     lot_id = row.get("lot_id")
                     if not isinstance(lot_id, str) or not lot_id:
                         continue
                     if lot_id in seen_lot_ids:
+                        page_duplicate_rows += 1
                         continue
                     seen_lot_ids.add(lot_id)
+                    if lot_id in known:
+                        skipped_known_count += 1
+                        page_known_rows += 1
+                        continue
                     listing_rows.append(row)
                     fresh_rows += 1
                 if page_rows and fresh_rows == 0:
-                    logger.info(
-                        "goszakup.pagination_stalled",
-                        page=page,
-                    )
+                    if page_known_rows > 0:
+                        logger.info(
+                            "goszakup.known_frontier_reached",
+                            page=page,
+                            skipped_known=page_known_rows,
+                            skipped_duplicates=page_duplicate_rows,
+                        )
+                    else:
+                        logger.info(
+                            "goszakup.pagination_stalled",
+                            page=page,
+                        )
                     break
                 if len(page_rows) < self.PAGE_SIZE:
                     break
@@ -544,6 +561,7 @@ class GoszakupConnector(Connector):
             logger.info(
                 "goszakup.listing_complete",
                 rows_collected=len(listing_rows),
+                skipped_known=skipped_known_count,
             )
 
             announcement_ids: list[str] = []

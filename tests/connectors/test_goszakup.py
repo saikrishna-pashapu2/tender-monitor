@@ -646,3 +646,41 @@ async def test_fetch_latest_stops_when_pagination_repeats_same_lots() -> None:
 
     assert len(result.tenders) == 50
     assert pages_requested == [1, 2]
+
+
+async def test_fetch_latest_skips_known_lots_without_fetching_announcements() -> None:
+    rows = "".join(
+        _build_listing_row(
+            lot_id=f"810000{i}",
+            announcement_id=f"9900{i}",
+        )
+        for i in range(50)
+    )
+    listing_html = _wrap_listing(rows)
+    pages_requested: list[int | None] = []
+    announcement_hits = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal announcement_hits
+        if _is_listing(request):
+            page_param = request.url.params.get("page")
+            pages_requested.append(int(page_param) if page_param else None)
+            return httpx.Response(200, text=listing_html)
+        if _is_announcement(request):
+            announcement_hits += 1
+            ann_id = _announcement_id_from_url(request)
+            return httpx.Response(
+                200,
+                text=_build_announcement_html(announcement_id=ann_id),
+            )
+        return httpx.Response(404)
+
+    known_ids = {f"810000{i}" for i in range(50)}
+    transport = httpx.MockTransport(handler)
+    connector = GoszakupConnector(http_client_factory=_client_factory(transport))
+    result = await connector.fetch_latest(known_external_ids=known_ids)
+
+    assert result.raw_item_count == 0
+    assert len(result.tenders) == 0
+    assert pages_requested == [1]
+    assert announcement_hits == 0

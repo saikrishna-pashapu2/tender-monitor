@@ -17,17 +17,21 @@ connectors:
   active list before we ingest them.
 - Order inside a stream is roughly id-descending, but date ordering is
   NOT strictly monotone. We therefore paginate to the per-stream page
-  cap unconditionally and apply the ``since`` filter post-pagination.
-  Early termination on the first older-than-since hit would drop
-  legitimately new but later-positioned items.
+  cap on steady-state runs, but allow deeper pagination on explicit
+  backfills until several fully-stale pages are observed. We still
+  apply the ``since`` filter post-pagination. Early termination on the
+  first older-than-since hit would drop legitimately new but
+  later-positioned items.
 - Dates are naive ISO ``YYYY-MM-DDTHH:MM:SS`` with no timezone
   marker. Treat them as Asia/Tashkent local (UTC+5), localize, then
   convert to UTC for storage.
 - Currency is UZS (Uzbek sum). The detail payload carries the ISO
   alpha code as ``currency_codeabc`` so we use that when available.
-- ``TypeId=1`` is the lane this connector currently follows for UZEX
-  tender/best-offer procurement. Status is derived from the detail or
-  ended-stream row rather than hardcoded open.
+- ``TypeId=1`` is not the whole market. UZEX exposes multiple
+  procurement lanes; we currently follow both the tender/best-offer
+  lane and the competition lane so ended-but-recent competitions such
+  as lot ``482604`` are still discoverable. Status is derived from the
+  detail or ended-stream row rather than hardcoded open.
 - The DevTools capture included a ``validation`` header that looks
   like a signed token. v1 deliberately omits it; if the live API
   rejects empty-validation, the live acceptance run catches that and
@@ -110,12 +114,37 @@ class UzexEtenderConnector(Connector):
     PAGE_SIZE: ClassVar[int] = 50
     ACTIVE_MAX_PAGES: ClassVar[int] = 15
     ENDED_MAX_PAGES: ClassVar[int] = 5
+    BACKFILL_ACTIVE_MAX_PAGES: ClassVar[int] = 60
+    BACKFILL_ENDED_MAX_PAGES: ClassVar[int] = 25
+    STALE_PAGE_THRESHOLD: ClassVar[int] = 3
+    LISTING_TYPE_IDS: ClassVar[tuple[int, ...]] = (
+        1,  # tender / best-offer lane
+        2,  # competition lane
+    )
     LISTING_STREAMS: ClassVar[
-        tuple[tuple[str, str, int], ...]
+        tuple[tuple[str, str, int, int, tuple[int, ...]], ...]
     ] = (
-        ("active", ACTIVE_LISTING_URL, ACTIVE_MAX_PAGES),
-        ("not_dealed", NOT_DEALED_LISTING_URL, ENDED_MAX_PAGES),
-        ("deals", DEALS_LISTING_URL, ENDED_MAX_PAGES),
+        (
+            "active",
+            ACTIVE_LISTING_URL,
+            ACTIVE_MAX_PAGES,
+            BACKFILL_ACTIVE_MAX_PAGES,
+            LISTING_TYPE_IDS,
+        ),
+        (
+            "not_dealed",
+            NOT_DEALED_LISTING_URL,
+            ENDED_MAX_PAGES,
+            BACKFILL_ENDED_MAX_PAGES,
+            LISTING_TYPE_IDS,
+        ),
+        (
+            "deals",
+            DEALS_LISTING_URL,
+            ENDED_MAX_PAGES,
+            BACKFILL_ENDED_MAX_PAGES,
+            LISTING_TYPE_IDS,
+        ),
     )
     EMBEDDED_JSON_FIELDS: ClassVar[tuple[str, ...]] = (
         "budget_products",
@@ -140,7 +169,6 @@ class UzexEtenderConnector(Connector):
         ("agreement_additional_file", "Agreement attachment"),
     )
     LISTING_BODY_TEMPLATE: ClassVar[dict[str, int]] = {
-        "TypeId": 1,
         "System_Id": 0,  # all systems
     }
 
@@ -170,11 +198,13 @@ class UzexEtenderConnector(Connector):
         client: httpx.AsyncClient,
         *,
         url: str,
+        type_id: int,
         from_offset: int,
         to_offset: int,
     ) -> httpx.Response:
         body: dict[str, int] = {
             **self.LISTING_BODY_TEMPLATE,
+            "TypeId": type_id,
             "From": from_offset,
             "To": to_offset,
         }
@@ -188,6 +218,7 @@ class UzexEtenderConnector(Connector):
         *,
         url: str,
         stream_name: str,
+        type_id: int,
         page_index: int,
     ) -> list[dict[str, Any]]:
         from_offset = page_index * self.PAGE_SIZE + 1
@@ -198,6 +229,7 @@ class UzexEtenderConnector(Connector):
                 url=url,
                 from_offset=from_offset,
                 to_offset=to_offset,
+                type_id=type_id,
             )
         except (
             httpx.TimeoutException,
@@ -206,14 +238,15 @@ class UzexEtenderConnector(Connector):
         ) as exc:
             raise FetchError(
                 f"uzex_etender {stream_name} listing From={from_offset} "
-                f"To={to_offset} "
+                f"To={to_offset} TypeId={type_id} "
                 f"failed: {type(exc).__name__}: {exc}"
             ) from exc
         payload = response.json()
         if not isinstance(payload, list):
             raise FetchError(
                 f"uzex_etender {stream_name} listing From={from_offset} returned "
-                f"non-list payload: {type(payload).__name__}"
+                f"non-list payload for TypeId={type_id}: "
+                f"{type(payload).__name__}"
             )
         return payload
 
@@ -454,14 +487,24 @@ class UzexEtenderConnector(Connector):
     async def _fetch_raw(self, since: datetime | None) -> list[dict[str, Any]]:
         accumulated: list[dict[str, Any]] = []
         async with self._make_client() as client:
-            for stream_name, url, max_pages in self.LISTING_STREAMS:
-                stream_items = await self._fetch_stream(
-                    client,
-                    stream_name=stream_name,
-                    url=url,
-                    max_pages=max_pages,
-                )
-                accumulated.extend(stream_items)
+            for (
+                stream_name,
+                url,
+                max_pages,
+                backfill_max_pages,
+                type_ids,
+            ) in self.LISTING_STREAMS:
+                for type_id in type_ids:
+                    stream_items = await self._fetch_stream(
+                        client,
+                        stream_name=stream_name,
+                        url=url,
+                        max_pages=max_pages,
+                        backfill_max_pages=backfill_max_pages,
+                        type_id=type_id,
+                        since=since,
+                    )
+                    accumulated.extend(stream_items)
 
             deduped = self._dedupe_raw_items(accumulated)
 
@@ -498,35 +541,69 @@ class UzexEtenderConnector(Connector):
         stream_name: str,
         url: str,
         max_pages: int,
+        backfill_max_pages: int,
+        type_id: int,
+        since: datetime | None,
     ) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         pages_walked = 0
-        for page_index in range(max_pages):
+        stale_pages = 0
+        page_limit = max_pages if since is None else backfill_max_pages
+        for page_index in range(page_limit):
             page_items = await self._fetch_listing_page(
                 client,
                 url=url,
                 stream_name=stream_name,
+                type_id=type_id,
                 page_index=page_index,
             )
             pages_walked = page_index + 1
             if not page_items:
                 break
+
+            page_is_stale = False
+            if since is not None:
+                page_is_stale = True
+                for item in page_items:
+                    if not isinstance(item, dict):
+                        page_is_stale = False
+                        break
+                    candidate_timestamp = self._candidate_timestamp(item)
+                    if candidate_timestamp is None or candidate_timestamp >= since:
+                        page_is_stale = False
+                        break
+                if page_is_stale:
+                    stale_pages += 1
+                else:
+                    stale_pages = 0
+
             for item in page_items:
                 if isinstance(item, dict):
                     items.append(
                         {
                             **item,
                             "_listing_stream": stream_name,
+                            "_listing_type_id": type_id,
                         }
                     )
             if len(page_items) < self.PAGE_SIZE:
+                break
+            if since is None and page_index + 1 >= max_pages:
+                break
+            if (
+                since is not None
+                and page_index + 1 > max_pages
+                and stale_pages >= self.STALE_PAGE_THRESHOLD
+            ):
                 break
 
         logger.info(
             "uzex_etender.stream_complete",
             stream=stream_name,
+            type_id=type_id,
             pages_walked=pages_walked,
             items_collected=len(items),
+            stale_pages=stale_pages,
         )
         return items
 

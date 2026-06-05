@@ -61,6 +61,7 @@ _AMOUNT_WHITESPACE = (" ", " ", " ")
 # currency suffix ("KZT", Cyrillic "tenge", "USD") and any
 # parenthetical VAT note sit outside this match.
 _AMOUNT_RUN_RE = re.compile(r"[0-9][0-9,\.]*[0-9]|[0-9]")
+_KZ_DATETIME_RE = re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
 
 
 def parse_kzt_amount(text: str | None) -> Decimal | None:
@@ -110,6 +111,10 @@ def parse_kzt_amount(text: str | None) -> Decimal | None:
 def parse_kz_local_datetime(text: str | None) -> datetime | None:
     """Parse "YYYY-MM-DD HH:MM:SS" as Asia/Almaty local -> aware UTC.
 
+    MITWORK sometimes appends relative helper text after the timestamp,
+    e.g. ``"2026-06-11 12:00:00 in 8 days"``. In that case we parse the
+    leading timestamp and ignore the trailing text.
+
     Returns None on empty/missing/malformed input.
     """
     if not text:
@@ -117,6 +122,9 @@ def parse_kz_local_datetime(text: str | None) -> datetime | None:
     cleaned = text.strip()
     if not cleaned:
         return None
+    match = _KZ_DATETIME_RE.search(cleaned)
+    if match is not None:
+        cleaned = match.group(0)
     try:
         naive = datetime.strptime(cleaned, "%Y-%m-%d %H:%M:%S")
     except ValueError:

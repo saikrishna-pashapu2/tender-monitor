@@ -182,8 +182,13 @@ def _make_handler(
     pages: list[list[dict[str, Any]]],
     captured: list[httpx.Request],
     details_by_id: dict[int, dict[str, Any]] | None = None,
+    pages_by_type: dict[int, list[list[dict[str, Any]]]] | None = None,
     deals_pages: list[list[dict[str, Any]]] | None = None,
+    deals_pages_by_type: dict[int, list[list[dict[str, Any]]]] | None = None,
     not_dealed_pages: list[list[dict[str, Any]]] | None = None,
+    not_dealed_pages_by_type: dict[
+        int, list[list[dict[str, Any]]]
+    ] | None = None,
 ) -> Callable[[httpx.Request], httpx.Response]:
     """Return a handler that serves successive listing pages in order.
 
@@ -200,10 +205,32 @@ def _make_handler(
             pages_by_from[idx * UzexEtenderConnector.PAGE_SIZE + 1] = page
         return pages_by_from
 
-    pages_by_path: dict[str, dict[int, list[dict[str, Any]]]] = {
-        LISTING_PATH: _index_pages(pages),
-        DEALS_PATH: _index_pages(deals_pages or [[]]),
-        NOT_DEALED_PATH: _index_pages(not_dealed_pages or [[]]),
+    def _index_type_pages(
+        typed_pages: dict[int, list[list[dict[str, Any]]]] | None,
+        *,
+        default_pages: list[list[dict[str, Any]]],
+    ) -> dict[int, dict[int, list[dict[str, Any]]]]:
+        indexed: dict[int, dict[int, list[dict[str, Any]]]] = {}
+        if typed_pages:
+            for type_id, stream_pages in typed_pages.items():
+                indexed[type_id] = _index_pages(stream_pages)
+        if 1 not in indexed:
+            indexed[1] = _index_pages(default_pages)
+        return indexed
+
+    pages_by_path: dict[str, dict[int, dict[int, list[dict[str, Any]]]]] = {
+        LISTING_PATH: _index_type_pages(
+            pages_by_type,
+            default_pages=pages,
+        ),
+        DEALS_PATH: _index_type_pages(
+            deals_pages_by_type,
+            default_pages=deals_pages or [[]],
+        ),
+        NOT_DEALED_PATH: _index_type_pages(
+            not_dealed_pages_by_type,
+            default_pages=not_dealed_pages or [[]],
+        ),
     }
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -218,7 +245,12 @@ def _make_handler(
             return httpx.Response(404)
         body = _body_json(request)
         from_offset = int(body.get("From", 0))
-        page = pages_by_path.get(request.url.path, {}).get(from_offset, [])
+        type_id = int(body.get("TypeId", 1))
+        page = (
+            pages_by_path.get(request.url.path, {})
+            .get(type_id, {})
+            .get(from_offset, [])
+        )
         return httpx.Response(200, json=page)
 
     return handler
@@ -474,6 +506,84 @@ async def test_fetch_latest_includes_recent_not_dealed_items() -> None:
     assert {t.external_id for t in result.tenders} == {"700001", "700002"}
     failed_tender = next(t for t in result.tenders if t.external_id == "700002")
     assert failed_tender.status is TenderStatus.cancelled
+
+
+async def test_fetch_latest_discovers_competition_lane_items() -> None:
+    competition_item = {
+        "id": 482604,
+        "display_no": "26120012482604",
+        "name": "Услуга по разработке климатической стратегии",
+        "seller_name": "АО O`ZBEKTELEKOM",
+        "seller_tin": "203366731",
+        "start_date": "2026-05-15T12:36:00",
+        "end_date": "2026-05-22T12:36:00",
+        "cost": 2476000000.0,
+        "currency_codeabc": "UZS",
+        "status_id": 6,
+        "status_name": "Application deadline has ended",
+    }
+    detail = _read_detail_fixture("detail_482604.json")
+
+    captured: list[httpx.Request] = []
+    handler = _make_handler(
+        pages=[[]],
+        pages_by_type={2: [[competition_item]]},
+        captured=captured,
+        details_by_id={482604: detail},
+    )
+    transport = httpx.MockTransport(handler)
+    connector = UzexEtenderConnector(http_client_factory=_client_factory(transport))
+
+    result = await connector.fetch_latest()
+
+    assert result.raw_item_count == 1
+    assert [t.external_id for t in result.tenders] == ["482604"]
+    assert result.tenders[0].status is TenderStatus.closed
+    listing_bodies = [_body_json(request) for request in captured if _is_active_listing(request)]
+    assert {"TypeId": 1, "System_Id": 0, "From": 1, "To": 50} in listing_bodies
+    assert {"TypeId": 2, "System_Id": 0, "From": 1, "To": 50} in listing_bodies
+
+
+async def test_fetch_latest_backfills_beyond_default_active_page_cap() -> None:
+    template = copy.deepcopy(_read_fixture()[0])
+    old_pages: list[list[dict[str, Any]]] = []
+    for page_index in range(UzexEtenderConnector.ACTIVE_MAX_PAGES):
+        page: list[dict[str, Any]] = []
+        for item_index in range(UzexEtenderConnector.PAGE_SIZE):
+            clone = copy.deepcopy(template)
+            clone["id"] = 800000 + page_index * 100 + item_index
+            clone["start_date"] = "2026-04-01T10:00:00"
+            page.append(clone)
+        old_pages.append(page)
+
+    target_item = copy.deepcopy(template)
+    target_item["id"] = 482604
+    target_item["display_no"] = "26120012482604"
+    target_item["start_date"] = "2026-05-15T12:36:31"
+    target_item["end_date"] = "2026-05-22T12:36:31"
+    target_item["cost"] = 2476000000.0
+    target_item["currency_codeabc"] = "UZS"
+
+    page_16 = [target_item]
+    detail = _read_detail_fixture("detail_482604.json")
+
+    captured: list[httpx.Request] = []
+    handler = _make_handler(
+        pages=[*old_pages, page_16],
+        captured=captured,
+        details_by_id={482604: detail},
+    )
+    transport = httpx.MockTransport(handler)
+    connector = UzexEtenderConnector(http_client_factory=_client_factory(transport))
+
+    since = datetime(2026, 5, 1, 0, 0, tzinfo=UTC)
+    result = await connector.fetch_latest(since=since)
+
+    assert "482604" in {t.external_id for t in result.tenders}
+    active_listing_bodies = [
+        _body_json(request) for request in captured if _is_active_listing(request)
+    ]
+    assert {"TypeId": 1, "System_Id": 0, "From": 751, "To": 800} in active_listing_bodies
 
 
 async def test_fetch_latest_500_raises_fetch_error() -> None:

@@ -134,6 +134,12 @@ def test_parse_kz_local_datetime_handles_empty() -> None:
     assert parse_kz_local_datetime("not a date") is None
 
 
+def test_parse_kz_local_datetime_ignores_trailing_helper_text() -> None:
+    result = parse_kz_local_datetime("2026-06-11 12:00:00 in 8 days")
+    assert result is not None
+    assert result == datetime(2026, 6, 11, 7, 0, 0, tzinfo=UTC)
+
+
 def test_status_mapping() -> None:
     assert STATUS_MAPPING["Опубликовано"] is TenderStatus.open
     # Unknown / empty / None fall through.
