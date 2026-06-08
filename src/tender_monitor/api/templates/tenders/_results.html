@@ -1,32 +1,35 @@
 {# HTMX partial: results grid + pagination. Sole owner of #results-inner. #}
-<div class="flex items-baseline justify-between gap-3 mb-3">
-  <div class="text-sm text-gray-500">
+<div class="mb-4 flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white px-4 py-3 shadow-sm shadow-slate-100 sm:flex-row sm:items-center sm:justify-between">
+  <div class="text-sm text-slate-500">
     {% if total == 0 %}
       No tenders match these filters.
     {% else %}
       Showing
-      <span class="font-medium text-gray-700">{{ tenders|length }}</span>
-      of <span class="font-medium text-gray-700">{{ "{:,}".format(total) }}</span> tenders
-      {% if filters and not filters.is_empty %}<span class="text-gray-400">· filtered</span>{% endif %}
+      <span class="font-semibold text-slate-900">{{ tenders|length }}</span>
+      of <span class="font-semibold text-slate-900">{{ "{:,}".format(total) }}</span> tenders
+      {% if filters and not filters.is_empty %}<span class="text-slate-400">· filtered</span>{% endif %}
     {% endif %}
   </div>
-  <select id="sort-select"
-          name="sort"
-          form="filters"
-          hx-get="/"
-          hx-target="#results"
-          hx-push-url="true"
-          hx-include="#filters, #search-input, #sort-select"
-          class="text-sm rounded border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-    <option value="newest"     {% if sort == "newest"     %}selected{% endif %}>Newest first</option>
-    <option value="deadline"   {% if sort == "deadline"   %}selected{% endif %}>Deadline soonest</option>
-    <option value="value_desc" {% if sort == "value_desc" %}selected{% endif %}>Highest value</option>
-    <option value="value_asc"  {% if sort == "value_asc"  %}selected{% endif %}>Lowest value</option>
-  </select>
+  <div class="flex items-center gap-3">
+    <span class="hidden text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400 sm:inline">Sort</span>
+    <select id="sort-select"
+            name="sort"
+            form="filters"
+            hx-get="/"
+            hx-target="#results"
+            hx-push-url="true"
+            hx-include="#filters, #search-input, #sort-select"
+            class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:ring-blue-500">
+      <option value="newest"     {% if sort == "newest"     %}selected{% endif %}>Newest first</option>
+      <option value="deadline"   {% if sort == "deadline"   %}selected{% endif %}>Deadline soonest</option>
+      <option value="value_desc" {% if sort == "value_desc" %}selected{% endif %}>Highest value</option>
+      <option value="value_asc"  {% if sort == "value_asc"  %}selected{% endif %}>Lowest value</option>
+    </select>
+  </div>
 </div>
 
 {% if tenders %}
-  <div class="grid gap-3 sm:gap-4">
+  <div class="grid gap-4 lg:gap-5">
     {% for tender in tenders %}
       {% include "tenders/_card.html" %}
     {% endfor %}
@@ -34,29 +37,29 @@
 
   {% if pages > 1 %}
     {% set hx_attrs = 'hx-get="/" hx-target="#results" hx-push-url="true" hx-include="#filters, #search-input, #sort-select"' %}
-    <nav class="flex items-center justify-between mt-6 text-sm">
+    <nav class="mt-6 flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm shadow-slate-100 sm:flex-row sm:items-center sm:justify-between">
       <div>
         {% if page > 1 %}
           <button name="page" value="{{ page - 1 }}" form="filters" {{ hx_attrs|safe }}
-                  class="px-3 py-1.5 rounded border border-gray-200 hover:bg-gray-100">
+                  class="rounded-2xl border border-slate-200 px-3 py-2 text-slate-700 transition hover:bg-slate-50">
             « Prev
           </button>
         {% else %}
-          <span class="px-3 py-1.5 rounded border border-gray-100 text-gray-300">« Prev</span>
+          <span class="rounded-2xl border border-slate-100 px-3 py-2 text-slate-300">« Prev</span>
         {% endif %}
       </div>
-      <div class="text-gray-600">Page {{ page }} of {{ pages }}</div>
+      <div class="text-slate-600">Page {{ page }} of {{ pages }}</div>
       <div class="flex items-center gap-2">
         {% if page < pages %}
           <button name="page" value="{{ page + 1 }}" form="filters" {{ hx_attrs|safe }}
-                  class="px-3 py-1.5 rounded border border-gray-200 hover:bg-gray-100">
+                  class="rounded-2xl border border-slate-200 px-3 py-2 text-slate-700 transition hover:bg-slate-50">
             Next »
           </button>
         {% else %}
-          <span class="px-3 py-1.5 rounded border border-gray-100 text-gray-300">Next »</span>
+          <span class="rounded-2xl border border-slate-100 px-3 py-2 text-slate-300">Next »</span>
         {% endif %}
         <select name="per_page" form="filters" {{ hx_attrs|safe }}
-                class="text-sm rounded border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500">
           {% for size in [10, 25, 50, 100] %}
             <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} / page</option>
           {% endfor %}
@@ -65,10 +68,10 @@
     </nav>
   {% endif %}
 {% else %}
-  <div class="bg-white border border-dashed border-gray-300 rounded-lg p-10 text-center">
-    <i data-lucide="search-x" class="w-8 h-8 text-gray-300 mx-auto mb-2"></i>
-    <p class="text-gray-600 mb-3">No tenders match these filters.</p>
-    <a href="/" class="inline-block px-3 py-1.5 text-sm rounded border border-gray-200 hover:bg-gray-100">
+  <div class="rounded-[28px] border border-dashed border-slate-300 bg-white p-12 text-center shadow-sm shadow-slate-100">
+    <i data-lucide="search-x" class="mx-auto mb-3 h-8 w-8 text-slate-300"></i>
+    <p class="mb-3 text-slate-600">No tenders match these filters.</p>
+    <a href="/" class="inline-block rounded-2xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
       Clear all
     </a>
   </div>

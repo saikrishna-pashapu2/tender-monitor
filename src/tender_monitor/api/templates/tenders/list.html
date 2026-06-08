@@ -1,40 +1,60 @@
 {% extends "base.html" %}
 {% block title %}Tenders · Tender Monitor{% endblock %}
+{% block page_shell_class %}max-w-[96rem]{% endblock %}
+{% block page_main_shell_class %}max-w-[96rem]{% endblock %}
+{% block page_footer_shell_class %}max-w-[96rem]{% endblock %}
 
 {% block content %}
-  <div class="flex items-start justify-between gap-3 mb-4">
-    <div>
-      <h1 class="text-xl sm:text-2xl font-semibold text-gray-900">Tenders</h1>
-      <p class="text-sm text-gray-500">Browse, filter and search every tender the scheduler has ingested.</p>
-    </div>
-    <button type="button"
-            class="lg:hidden inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-gray-200 bg-white"
-            onclick="document.getElementById('sidebar').classList.toggle('hidden')">
-      <i data-lucide="filter" class="w-4 h-4"></i> Filters
-    </button>
-  </div>
+  <section class="mb-6 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
+    <div class="bg-[radial-gradient(circle_at_top_left,_rgba(37,99,235,0.12),_transparent_38%),radial-gradient(circle_at_bottom_right,_rgba(16,185,129,0.10),_transparent_32%),linear-gradient(135deg,_#ffffff,_#f8fafc)] px-5 py-6 sm:px-7">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="mb-2 inline-flex items-center rounded-full border border-slate-200 bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            Matched tender feed
+          </div>
+          <h1 class="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">Tenders</h1>
+          <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            Browse, filter, and triage every ingested tender with a cleaner review flow for analysts.
+          </p>
+        </div>
+        <button type="button"
+                class="lg:hidden inline-flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm shadow-slate-100"
+                onclick="document.getElementById('sidebar').classList.toggle('hidden')">
+          <i data-lucide="sliders-horizontal" class="w-4 h-4"></i> Filters
+        </button>
+      </div>
 
-  <div class="flex items-center gap-2 mb-4">
-    <div class="relative flex-1 max-w-xl">
-      <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-      <input id="search-input"
-             type="search"
-             name="q"
-             value="{{ filters.q or '' }}"
-             placeholder="Search title or buyer…"
-             hx-get="/"
-             hx-target="#results"
-             hx-push-url="true"
-             hx-trigger="keyup changed delay:300ms, search"
-             hx-include="#filters, #search-input, #sort-select"
-             class="w-full pl-9 pr-3 py-2 text-sm rounded border-gray-300 focus:border-blue-500 focus:ring-blue-500" />
+      <div class="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_16rem]">
+        <div class="relative">
+          <i data-lucide="search" class="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+          <input id="search-input"
+                 type="search"
+                 name="q"
+                 value="{{ filters.q or '' }}"
+                 placeholder="Search title, buyer, or keyword trail…"
+                 hx-get="/"
+                 hx-target="#results"
+                 hx-push-url="true"
+                 hx-trigger="keyup changed delay:300ms, search"
+                 hx-include="#filters, #search-input, #sort-select"
+                 class="w-full rounded-2xl border border-slate-200 bg-white/95 py-3 pl-11 pr-4 text-sm text-slate-900 shadow-sm shadow-slate-100 placeholder:text-slate-400 focus:border-blue-500 focus:ring-blue-500" />
+        </div>
+        <div class="hidden lg:flex items-center justify-end gap-2 text-xs text-slate-500">
+          <span class="inline-flex items-center rounded-full bg-white/90 px-3 py-2 shadow-sm shadow-slate-100">
+            {{ "{:,}".format(total or 0) }} visible
+          </span>
+          <span class="inline-flex items-center rounded-full bg-white/90 px-3 py-2 shadow-sm shadow-slate-100">
+            {{ filters.group|length or 2 }} focus group{{ "s" if (filters.group|length or 2) != 1 else "" }}
+          </span>
+        </div>
+      </div>
     </div>
-  </div>
+  </section>
 
-  <div class="flex flex-col lg:flex-row gap-6">
+  <div class="grid gap-6 xl:grid-cols-[17.5rem_minmax(0,1fr)]">
     <aside id="sidebar"
-           class="hidden lg:block lg:w-72 lg:shrink-0">
-      <div class="bg-white border border-gray-200 rounded-lg p-4 lg:sticky lg:top-20">
+           class="hidden xl:block">
+      <div class="overflow-hidden rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 xl:sticky xl:top-20">
         {% include "_filters.html" %}
       </div>
     </aside>

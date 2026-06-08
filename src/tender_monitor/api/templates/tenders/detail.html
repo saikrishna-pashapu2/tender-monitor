@@ -130,12 +130,19 @@
               <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Value</div>
               <div class="mt-2 text-sm font-medium text-slate-900">
                 {% if tender.value_amount is not none %}
-                  {{ tender.value_amount|pretty_amount_with_usd(tender.value_currency) }}
+                  {{ tender.value_amount|pretty_amount(tender.value_currency) }}
                 {% else %}—{% endif %}
               </div>
-              <div class="mt-1 text-xs text-slate-500">
-                {{ tender.value_currency or "No currency" }}
-              </div>
+              {% if tender.value_amount is not none %}
+                {% set usd_value = tender.value_amount|amount_in_usd(tender.value_currency) %}
+                <div class="mt-1 text-sm font-medium text-slate-900">
+                  {% if usd_value is not none and (tender.value_currency or '').upper() != 'USD' %}
+                    {{ usd_value|pretty_amount("USD") }}
+                  {% else %}
+                    {{ tender.value_currency or "No currency" }}
+                  {% endif %}
+                </div>
+              {% endif %}
             </div>
             <div class="rounded-2xl border border-white/70 bg-white/90 p-4 shadow-sm shadow-slate-100">
               <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Coverage</div>
