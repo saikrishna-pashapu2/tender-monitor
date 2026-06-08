@@ -75,7 +75,7 @@
     <div>
       <div class="text-[11px] uppercase tracking-wide text-gray-500">Value</div>
       {% if tender.value_amount is not none %}
-        <div class="font-medium text-gray-900">{{ tender.value_amount|pretty_amount(tender.value_currency) }}</div>
+        <div class="font-medium text-gray-900">{{ tender.value_amount|pretty_amount_with_usd(tender.value_currency) }}</div>
       {% else %}
         <div class="font-medium text-gray-400">—</div>
       {% endif %}

@@ -1,0 +1,298 @@
+{% set accent = "blue" %}
+
+<section class="space-y-5">
+  <section class="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
+    <div class="border-b border-slate-200 bg-gradient-to-br from-white via-slate-50 to-blue-50/70 px-5 py-5 sm:px-7 sm:py-6">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="min-w-0">
+          <div class="text-sm text-slate-500">Selection of the best offer</div>
+          <div class="mt-1 text-sm text-slate-500">No.:</div>
+          <div class="mt-2 inline-flex items-center rounded-xl bg-blue-900 px-3 py-2 font-mono text-sm font-semibold tracking-wide text-white">
+            {{ uzex_view.reference_no or tender.external_id }}
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="flex h-11 w-11 items-center justify-center rounded-xl border border-blue-200 bg-white text-blue-800">
+            <i data-lucide="bell" class="h-4 w-4"></i>
+          </div>
+          <a href="{{ tender.source_url }}"
+             target="_blank"
+             rel="noopener"
+             class="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-900 px-4 text-sm font-medium text-white transition hover:bg-blue-800">
+            <i data-lucide="external-link" class="h-4 w-4"></i>
+            Visit source
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4 sm:p-6">
+      <div class="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-100">
+        <div class="mb-3 text-center text-sm font-medium text-slate-700">Time left until end:</div>
+        {% set deadline = tender.deadline_at|deadline_state %}
+        <div class="text-center">
+          {% if tender.deadline_at and deadline.color != 'past' %}
+            <div class="inline-flex rounded-2xl bg-slate-900 px-3 py-2 font-mono text-2xl font-semibold tracking-[0.22em] text-white shadow-lg shadow-slate-900/10">
+              {{ deadline.label }}
+            </div>
+          {% else %}
+            <div class="inline-flex rounded-2xl bg-slate-200 px-3 py-2 text-sm font-medium text-slate-600">
+              {{ deadline.label }}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      {% for row in uzex_view.timeline_rows %}
+        <div class="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-100">
+          <div class="text-center text-sm font-medium text-slate-700">{{ row.label }}</div>
+          {% if row.label == "Total starting price" %}
+            <div class="mt-3 text-center text-2xl font-semibold text-emerald-600">
+              {% if row.value is not none %}
+                {{ row.value|pretty_amount_with_usd(row.currency) }}
+              {% else %}—{% endif %}
+            </div>
+            <div class="mt-2 text-center text-xs text-slate-500">
+              Lotning boshlang'ich narhi UZSda belgilangan!
+            </div>
+          {% else %}
+            <div class="mt-3 text-center text-base font-medium {% if row.label == 'End date' %}text-red-500{% else %}text-emerald-600{% endif %}">
+              {{ row.value|pretty_scalar }}
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="rounded-[24px] border border-slate-200 bg-white px-5 py-4 text-center text-2xl font-medium text-slate-900 shadow-sm shadow-slate-200/70">
+    The starting price is denominated in {{ tender.value_currency or "the source currency" }}.
+  </section>
+
+  {% if uzex_view.lot_description %}
+    <section class="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70 sm:p-6">
+      <div class="mb-5 text-2xl font-medium text-blue-900">
+        1 - {{ uzex_view.lot_title or tender.title }}
+      </div>
+
+      <div class="overflow-x-auto rounded-2xl border border-slate-200">
+        <table class="min-w-full border-collapse text-sm">
+          <thead class="bg-slate-900 text-white">
+            <tr>
+              <th class="px-4 py-3 text-left font-medium">Quantity</th>
+              <th class="px-4 py-3 text-left font-medium">Unit</th>
+              <th class="px-4 py-3 text-left font-medium">Properties</th>
+              <th class="px-4 py-3 text-left font-medium">Category</th>
+              <th class="px-4 py-3 text-left font-medium">Starting price</th>
+              <th class="px-4 py-3 text-left font-medium">Total amount</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-200 bg-white">
+            <tr class="align-top">
+              <td class="px-4 py-4 text-slate-900">{{ uzex_view.primary_budget.get("Quantity") or "1" }}</td>
+              <td class="px-4 py-4 text-slate-900">{{ uzex_view.primary_budget.get("Measure") or "—" }}</td>
+              <td class="px-4 py-4 text-slate-900">{{ uzex_view.primary_budget.get("Properties") or "—" }}</td>
+              <td class="px-4 py-4 text-slate-900">{{ uzex_view.primary_budget.get("Category") or uzex_view.primary_budget.get("Description") or "—" }}</td>
+              <td class="px-4 py-4 text-emerald-600">{{ tender.value_amount|pretty_amount_with_usd(tender.value_currency) if tender.value_amount is not none else "—" }}</td>
+              <td class="px-4 py-4 text-emerald-600">{{ tender.value_amount|pretty_amount_with_usd(tender.value_currency) if tender.value_amount is not none else "—" }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-4 space-y-2 text-sm text-slate-700">
+        <p><span class="font-medium">Detailed description:</span> {{ uzex_view.lot_description }}</p>
+      </div>
+    </section>
+  {% endif %}
+
+  <section class="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70 sm:p-6">
+    <div data-tab-scope>
+    <div class="mb-5 flex flex-wrap gap-1.5" data-tab-group="uzex-main">
+      <button type="button"
+              data-tab-target="lot-info"
+              class="uzex-tab-btn rounded-t-xl border border-slate-300 bg-blue-900 px-4 py-3 text-sm font-medium text-white">
+        Lot information
+      </button>
+      <button type="button"
+              data-tab-target="qualification"
+              class="uzex-tab-btn rounded-t-xl border border-slate-300 bg-slate-900 px-4 py-3 text-sm font-medium text-white">
+        Qualification requirements
+      </button>
+      <button type="button"
+              data-tab-target="technical"
+              class="uzex-tab-btn rounded-t-xl border border-slate-300 bg-slate-900 px-4 py-3 text-sm font-medium text-white">
+        Technical requirements
+      </button>
+      <button type="button"
+              data-tab-target="files"
+              class="uzex-tab-btn rounded-t-xl border border-slate-300 bg-slate-900 px-4 py-3 text-sm font-medium text-white">
+        Files to download
+      </button>
+    </div>
+
+    <div data-tab-panel="lot-info" class="uzex-tab-panel">
+      <dl class="grid gap-x-8 gap-y-4 lg:grid-cols-[minmax(14rem,18rem)_1fr] xl:grid-cols-[minmax(16rem,22rem)_1fr]">
+        {% for row in uzex_view.info_rows %}
+          <dt class="text-right text-sm text-slate-700">{{ row.label }}</dt>
+          <dd class="text-sm font-medium text-slate-950 whitespace-pre-wrap break-words">{{ row.value|pretty_scalar }}</dd>
+        {% endfor %}
+      </dl>
+
+      {% if uzex_view.primary_lot_rows %}
+        <div class="mt-8">
+          <h3 class="mb-3 text-xl font-medium text-blue-900">Primary lot fields</h3>
+          <dl class="grid gap-3 md:grid-cols-2">
+            {% for row in uzex_view.primary_lot_rows %}
+              <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <dt class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{{ row.label }}</dt>
+                <dd class="mt-2 text-sm text-slate-900 whitespace-pre-wrap break-words">{{ row.value|pretty_scalar }}</dd>
+              </div>
+            {% endfor %}
+          </dl>
+        </div>
+      {% endif %}
+
+      {% if uzex_view.primary_budget_rows %}
+        <div class="mt-8">
+          <h3 class="mb-3 text-xl font-medium text-blue-900">Lot commercial details</h3>
+          <dl class="grid gap-3 md:grid-cols-2">
+            {% for row in uzex_view.primary_budget_rows %}
+              <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <dt class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{{ row.label }}</dt>
+                <dd class="mt-2 text-sm text-slate-900 whitespace-pre-wrap break-words">{{ row.value|pretty_scalar }}</dd>
+              </div>
+            {% endfor %}
+          </dl>
+        </div>
+      {% endif %}
+
+      {% if uzex_view.contacts %}
+        <div class="mt-8">
+          <h3 class="mb-3 text-xl font-medium text-blue-900">Contacts</h3>
+          <div class="overflow-x-auto rounded-2xl border border-slate-200">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-900 text-white">
+                <tr>
+                  <th class="px-4 py-3 text-left font-medium">Full name</th>
+                  <th class="px-4 py-3 text-left font-medium">Job title</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white">
+                {% for contact in uzex_view.contacts %}
+                  <tr class="border-t border-slate-200">
+                    <td class="px-4 py-3 font-medium text-slate-900">{{ contact.get("Fullname") or contact.get("fullname") or "—" }}</td>
+                    <td class="px-4 py-3 text-slate-700">{{ contact.get("Job_title") or contact.get("job_title") or "—" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+
+    <div data-tab-panel="qualification" class="uzex-tab-panel hidden">
+      <div class="space-y-4">
+        {% for item in uzex_view.qualification_items %}
+          <article class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <h3 class="text-base font-semibold text-slate-900">{{ item.get("name") or item.get("label") or "Requirement" }}</h3>
+            {% if item.get("description") %}
+              <p class="mt-2 text-sm text-slate-700 whitespace-pre-wrap">{{ item.get("description") }}</p>
+            {% endif %}
+          </article>
+        {% endfor %}
+        {% for item in uzex_view.qualification_forms %}
+          <article class="rounded-2xl border border-slate-200 bg-white p-4">
+            <h3 class="text-base font-semibold text-slate-900">{{ item.get("Name") or "Qualification form" }}</h3>
+            {% if item.get("File_Path") %}
+              <p class="mt-2 text-sm text-slate-600">Attached file path: {{ item.get("File_Path") }}</p>
+            {% endif %}
+          </article>
+        {% endfor %}
+        {% if not uzex_view.qualification_items and not uzex_view.qualification_forms %}
+          <p class="text-sm text-slate-500">No qualification requirements were extracted for this tender.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div data-tab-panel="technical" class="uzex-tab-panel hidden">
+      <div class="space-y-4">
+        {% for item in uzex_view.technical_items %}
+          <article class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <h3 class="text-base font-semibold text-slate-900">{{ item.get("label") or "Technical requirement" }}</h3>
+            {% if item.get("description") %}
+              <p class="mt-2 text-sm text-slate-700 whitespace-pre-wrap">{{ item.get("description") }}</p>
+            {% endif %}
+          </article>
+        {% endfor %}
+        {% for item in uzex_view.technical_forms %}
+          <article class="rounded-2xl border border-slate-200 bg-white p-4">
+            <h3 class="text-base font-semibold text-slate-900">{{ item.get("Label") or item.get("Form_Name") or "Technical form" }}</h3>
+            {% if item.get("Description") %}
+              <p class="mt-2 text-sm text-slate-700 whitespace-pre-wrap">{{ item.get("Description") }}</p>
+            {% endif %}
+          </article>
+        {% endfor %}
+        {% if not uzex_view.technical_items and not uzex_view.technical_forms %}
+          <p class="text-sm text-slate-500">No technical requirements were extracted for this tender.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div data-tab-panel="files" class="uzex-tab-panel hidden">
+      {% if uzex_view.document_tabs %}
+        <div data-tab-scope>
+        <div class="mb-4 flex flex-wrap gap-1.5" data-tab-group="uzex-files">
+          {% for tab in uzex_view.document_tabs %}
+            <button type="button"
+                    data-tab-target="file-{{ loop.index }}"
+                    class="uzex-tab-btn rounded-t-xl border border-slate-300 {% if loop.first %}bg-blue-900{% else %}bg-slate-900{% endif %} px-4 py-3 text-sm font-medium text-white">
+              {{ tab.label }}
+            </button>
+          {% endfor %}
+        </div>
+
+        {% for tab in uzex_view.document_tabs %}
+          <div data-tab-panel="file-{{ loop.index }}" class="uzex-tab-panel {% if not loop.first %}hidden{% endif %}">
+            <div class="grid gap-3 md:grid-cols-2">
+              {% for doc in tab.documents %}
+                <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-100">
+                  <h3 class="text-lg font-medium text-slate-900">{{ doc.name or "Document" }}</h3>
+                  <div class="mt-3 space-y-1 text-sm text-slate-700">
+                    <p>Type: {{ doc.ext or "—" }}</p>
+                    {% if doc.size_bytes is not none %}
+                      <p>Size: {{ doc.size_bytes|pretty_scalar }} bytes</p>
+                    {% endif %}
+                  </div>
+                  {% if doc.url %}
+                    <a href="{{ doc.url }}"
+                       target="_blank"
+                       rel="noopener"
+                       class="mt-4 inline-flex items-center rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600">
+                      Download
+                    </a>
+                  {% endif %}
+                </article>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm text-slate-500">No downloadable files were extracted for this tender.</p>
+      {% endif %}
+    </div>
+    </div>
+  </section>
+
+  <details class="overflow-hidden rounded-[24px] border border-slate-200 bg-slate-950 text-slate-100">
+    <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
+      <span>Raw source payload</span>
+      <span class="text-xs text-slate-400">Debug JSON</span>
+    </summary>
+    <div class="border-t border-slate-800 px-4 py-4">
+      <pre class="overflow-x-auto rounded-2xl bg-black/30 p-4 text-xs leading-6 text-slate-200">{{ tender.raw_json|pretty_json }}</pre>
+    </div>
+  </details>
+</section>

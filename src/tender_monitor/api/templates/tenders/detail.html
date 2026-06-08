@@ -1,371 +1,505 @@
 {% extends "base.html" %}
 {% block title %}{{ tender.title|truncate(60) }} · Tender Monitor{% endblock %}
+{% block page_shell_class %}max-w-[92rem]{% endblock %}
+{% block page_main_shell_class %}max-w-[92rem]{% endblock %}
+{% block page_footer_shell_class %}max-w-[92rem]{% endblock %}
 
 {% block content %}
-  <a href="#"
-     onclick="history.back(); return false;"
-     class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-blue-700 mb-3">
-    <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to all tenders
-  </a>
-
-  <div class="flex flex-col lg:flex-row gap-6">
-  <div class="flex-1 min-w-0">
-
-  {% set color = tender.source_name|source_color %}
-  <header class="bg-white rounded-lg border border-gray-200 p-5 sm:p-6 mb-4">
-    <div class="flex items-start justify-between gap-3 mb-3">
-      <h1 class="text-xl sm:text-2xl font-semibold text-gray-900 leading-snug">
-        {{ tender.title }}
-      </h1>
-      <a href="{{ tender.source_url }}"
-         target="_blank"
-         rel="noopener"
-         class="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded
-                bg-blue-600 text-white hover:bg-blue-700">
-        <i data-lucide="external-link" class="w-4 h-4"></i> Open at source
-      </a>
-    </div>
-
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
-                   bg-{{ color }}-100 text-{{ color }}-800">
-        {{ tender.country.value|country_flag }} {{ tender.source_name }}
-      </span>
-      {% for group in tender.matched_groups %}
-        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
-                     bg-{{ group|group_color }}-100 text-{{ group|group_color }}-800">
-          {{ group }}
-        </span>
-      {% endfor %}
-      <span class="text-xs text-gray-500 ml-auto">
-        First seen <span title="{{ tender.first_seen_at|isoformat }}">{{ tender.first_seen_at|timeago }}</span>
-      </span>
-    </div>
-  </header>
-
-  <section class="bg-white rounded-lg border border-gray-200 p-5 sm:p-6 mb-4">
-    <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Overview</h2>
-    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
-      <div>
-        <dt class="text-gray-500">Buyer</dt>
-        <dd class="text-gray-900">{{ tender.buyer_name or "—" }}</dd>
+  {% macro render_presented(node) -%}
+    {%- if node["kind"] == "scalar" -%}
+      <span class="whitespace-pre-wrap break-words">{{ node["value"]|pretty_scalar }}</span>
+    {%- elif node["kind"] == "scalar_list" -%}
+      <div class="flex flex-wrap gap-2">
+        {% for item in node["items"] %}
+          <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+            {{ item|pretty_scalar }}
+          </span>
+        {% endfor %}
       </div>
-      <div>
-        <dt class="text-gray-500">Buyer ID (BIN/TIN)</dt>
-        <dd class="text-gray-900 font-mono text-xs">{{ tender.buyer_external_id or "—" }}</dd>
-      </div>
-      <div>
-        <dt class="text-gray-500">Published</dt>
-        <dd class="text-gray-900">
-          {% if tender.published_at %}
-            <span class="font-medium">{{ tender.published_at|pretty_scalar }}</span>
-            <span class="text-xs text-gray-500 ml-1">({{ tender.published_at|timeago }})</span>
-          {% else %}—{% endif %}
-        </dd>
-      </div>
-      <div>
-        <dt class="text-gray-500">Deadline</dt>
-        <dd class="text-gray-900">
-          {% if tender.deadline_at %}
-            {% set d = tender.deadline_at|deadline_state %}
-            <span class="font-medium {% if d.color == 'past' %}strike text-gray-500{% endif %}">
-              {{ tender.deadline_at|pretty_scalar }}
-            </span>
-            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ml-1
-                         {% if d.color == 'past' %}bg-gray-100 text-gray-500{% else %}bg-{{ d.color }}-100 text-{{ d.color }}-800{% endif %}">
-              {{ d.label }}
-            </span>
-          {% else %}—{% endif %}
-        </dd>
-      </div>
-      <div>
-        <dt class="text-gray-500">Value</dt>
-        <dd class="text-gray-900">
-          {% if tender.value_amount is not none %}
-            {{ tender.value_amount|pretty_amount(tender.value_currency) }}
-          {% else %}—{% endif %}
-        </dd>
-      </div>
-      <div>
-        <dt class="text-gray-500">Status</dt>
-        <dd class="text-gray-900">{{ tender.status.value }}</dd>
-      </div>
-      <div>
-        <dt class="text-gray-500">Source</dt>
-        <dd class="text-gray-900">{{ tender.source_name }}</dd>
-      </div>
-      <div>
-        <dt class="text-gray-500">External ID</dt>
-        <dd class="text-gray-900 font-mono text-xs">{{ tender.external_id }}</dd>
-      </div>
-    </dl>
-  </section>
-
-  {% if tender.matched_groups and tender.match_details %}
-    <section class="bg-white rounded-lg border border-gray-200 p-5 sm:p-6 mb-4">
-      <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Why this matched</h2>
-      <div class="space-y-3">
-        {% for group in tender.matched_groups %}
-          {% set details = tender.match_details.get(group, {}) %}
-          <div>
-            <div class="mb-1">
-              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
-                           bg-{{ group|group_color }}-100 text-{{ group|group_color }}-800">
-                {{ group }}
-              </span>
-            </div>
-            {% if details.matched_phrases %}
-              <div class="text-sm">
-                <span class="text-gray-500">Phrases:</span>
-                {% for phrase in details.matched_phrases %}
-                  <code class="bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded text-xs">{{ phrase }}</code>
-                {% endfor %}
-              </div>
-            {% endif %}
-            {% if details.matched_tokens %}
-              <div class="text-sm mt-1">
-                <span class="text-gray-500">Tokens:</span>
-                {% for token in details.matched_tokens %}
-                  <code class="bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded text-xs">{{ token }}</code>
-                {% endfor %}
-              </div>
-            {% endif %}
+    {%- elif node["kind"] == "mapping" -%}
+      <dl class="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {% for row in node["rows"] %}
+          <div class="rounded-2xl border border-slate-200 bg-white/80 p-3">
+            <dt class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{{ row["label"] }}</dt>
+            <dd class="mt-2 text-sm text-slate-900">
+              {{ render_presented(row["value"]) }}
+            </dd>
           </div>
         {% endfor %}
-      </div>
-    </section>
-  {% endif %}
-
-  {% if documents %}
-    <section class="bg-white rounded-lg border border-gray-200 p-5 sm:p-6 mb-4">
-      <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
-        Documents ({{ documents|length }})
-      </h2>
-      <div class="space-y-3">
-        {% for doc in documents %}
-          <article class="border border-gray-200 rounded-lg p-4 text-sm">
-            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-              <div class="min-w-0">
-                <div class="font-medium text-gray-900 break-words">
-                  {{ doc.name or "Document" }}
-                </div>
-                <div class="flex flex-wrap gap-2 mt-1 text-xs text-gray-500">
-                  {% if doc.category %}
-                    <span>{{ doc.category }}</span>
-                  {% endif %}
-                  {% if doc.ext %}
-                    <span class="uppercase">{{ doc.ext }}</span>
-                  {% endif %}
-                  {% if doc.size_bytes is not none %}
-                    <span>{{ doc.size_bytes|pretty_scalar }} bytes</span>
-                  {% endif %}
-                </div>
-              </div>
-              {% if doc.url %}
-                <a href="{{ doc.url }}"
-                   target="_blank"
-                   rel="noopener"
-                   class="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded border border-blue-200 text-blue-700 hover:bg-blue-50">
-                  <i data-lucide="file-down" class="w-4 h-4"></i> Open file
-                </a>
-              {% endif %}
-            </div>
-          </article>
-        {% endfor %}
-      </div>
-    </section>
-  {% endif %}
-
-  {% macro render_value(value) -%}
-    {%- if value is scalar -%}
-      {{ value|pretty_scalar }}
-    {%- elif value is list_of_scalars -%}
-      {{ value|pretty_list_of_scalars }}
-    {%- elif value is mapping -%}
-      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {% for sub_key, sub_value in value.items()|sort %}
-          {{ field_row(sub_key|humanize_key, sub_value) }}
-        {% endfor %}
       </dl>
-    {%- elif value is sequence and value is not string -%}
+    {%- elif node["kind"] == "sequence" -%}
       <div class="space-y-3">
-        {% for item in value %}
-          <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
-            {% if item is mapping %}
-              <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {% for sub_key, sub_value in item.items()|sort %}
-                  {{ field_row(sub_key|humanize_key, sub_value) }}
+        {% for item in node["items"] %}
+          <article class="rounded-2xl border border-slate-200 bg-white/85 p-4 shadow-sm shadow-slate-100">
+            {% if item["title"] %}
+              <h4 class="mb-3 text-sm font-semibold text-slate-900">{{ item["title"] }}</h4>
+            {% endif %}
+            {% if item["kind"] == "mapping" %}
+              <dl class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {% for row in item["rows"] %}
+                  <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <dt class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{{ row["label"] }}</dt>
+                    <dd class="mt-2 text-sm text-slate-900">
+                      {{ render_presented(row["value"]) }}
+                    </dd>
+                  </div>
                 {% endfor %}
               </dl>
             {% else %}
-              <div class="text-sm text-gray-800 whitespace-pre-wrap break-words">{{ item|pretty_scalar }}</div>
+              <div class="text-sm text-slate-900">{{ item["value"]|pretty_scalar }}</div>
             {% endif %}
-          </div>
-        {% endfor %}
-      </div>
-    {%- else -%}
-      {{ value|pretty_scalar }}
-    {%- endif -%}
-  {%- endmacro %}
-
-  {% macro field_row(label, value) -%}
-    <div class="rounded-lg border border-gray-200 bg-white p-3">
-      <dt class="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">{{ label }}</dt>
-      <dd class="mt-2 text-sm text-gray-900 whitespace-pre-wrap break-words">
-        {{ render_value(value) }}
-      </dd>
-    </div>
-  {%- endmacro %}
-
-  {% if source_facts or source_sections %}
-    <section class="bg-white rounded-lg border border-gray-200 p-5 sm:p-6 mb-4">
-      <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-5">
-        <div>
-          <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Source details</h2>
-          <p class="mt-1 text-sm text-gray-500">
-            Connector-specific fields grouped into readable sections instead of a raw payload dump.
-          </p>
-        </div>
-        <span class="inline-flex items-center self-start rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
-          {{ tender.source_name }}
-        </span>
-      </div>
-
-      {% if source_facts %}
-        <div class="mb-5">
-          <h3 class="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 mb-3">Quick fields</h3>
-          <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-            {% for key, value in source_facts %}
-              {{ field_row(key|humanize_key, value) }}
-            {% endfor %}
-          </dl>
-        </div>
-      {% endif %}
-
-      {% if source_sections %}
-        <div class="space-y-4">
-          {% for key, value in source_sections %}
-            <section class="rounded-xl border border-gray-200 bg-gray-50 p-4">
-              <h3 class="text-sm font-semibold text-gray-900 mb-3">{{ key|humanize_key }}</h3>
-              {{ render_value(value) }}
-            </section>
-          {% endfor %}
-        </div>
-      {% endif %}
-
-      <details class="mt-5 rounded-xl border border-gray-200 bg-gray-50 group">
-        <summary class="flex items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-gray-700 hover:text-gray-900">
-          <span>Raw source payload</span>
-          <span class="text-xs text-gray-400 group-open:hidden">Show debug JSON</span>
-          <span class="text-xs text-gray-400 hidden group-open:inline">Hide debug JSON</span>
-        </summary>
-        <div class="border-t border-gray-200 px-4 py-4">
-          <pre class="overflow-x-auto rounded-lg bg-gray-900 p-4 text-xs leading-6 text-gray-100">{{ tender.raw_json|pretty_json }}</pre>
-        </div>
-      </details>
-    </section>
-  {% endif %}
-
-  {% if lots %}
-    <section class="bg-white rounded-lg border border-gray-200 p-5 sm:p-6 mb-4">
-      <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
-        Lots ({{ lots|length }})
-      </h2>
-      <div class="space-y-4">
-        {% for lot in lots %}
-          <article class="border border-gray-200 rounded-lg p-4 text-sm">
-            <div class="font-semibold text-gray-900 mb-3">
-              Lot {{ loop.index }}{% set lot_name = lot.get("name") or lot.get("name_ru") or lot.get("title") %}{% if lot_name %} · {{ lot_name }}{% endif %}
-            </div>
-            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {% for key, value in lot.items()|sort %}
-                {{ field_row(key|humanize_key, value) }}
-              {% endfor %}
-            </dl>
           </article>
         {% endfor %}
       </div>
-    </section>
-  {% endif %}
+    {%- endif -%}
+  {%- endmacro %}
 
-  {% if tender.change_log %}
-    <section class="bg-white rounded-lg border border-gray-200 p-5 sm:p-6 mb-4">
-      <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Change log</h2>
-      <ol class="space-y-2 text-sm">
-        {% for entry in tender.change_log %}
-          <li class="border-l-2 border-blue-200 pl-3">
-            <div class="text-xs text-gray-500">{{ entry.get("at", "") }}</div>
-            <ul class="list-disc list-inside text-gray-700">
-              {% for field, change in (entry.get("fields") or {}).items() %}
-                <li>
-                  <code class="text-gray-900">{{ field }}</code>:
-                  <span class="text-gray-500">{{ change.old }}</span>
-                  →
-                  <span class="text-gray-900">{{ change.new }}</span>
-                </li>
-              {% endfor %}
-            </ul>
-          </li>
-        {% endfor %}
-      </ol>
-    </section>
-  {% endif %}
+  {% set color = tender.source_name|source_color %}
 
-  </div> {# end main column #}
+  <a href="#"
+     onclick="history.back(); return false;"
+     class="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-500 transition hover:border-blue-200 hover:text-blue-700">
+    <i data-lucide="arrow-left" class="h-4 w-4"></i>
+    Back to all tenders
+  </a>
 
-  <aside class="lg:w-80 lg:shrink-0">
-    {% if related %}
-      <div class="bg-white rounded-lg border border-gray-200 p-4 lg:sticky lg:top-20 flex flex-col"
-           style="max-height: calc(100vh - 7rem);">
-        <div class="flex items-baseline justify-between mb-3 shrink-0">
-          <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-            More from {{ tender.source_name }}
-          </h2>
-          <span class="text-xs text-gray-400">{{ related|length }}</span>
+  <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_16rem] 2xl:grid-cols-[minmax(0,1fr)_17rem]">
+    <div class="min-w-0 space-y-5">
+      <header class="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
+        <div class="border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-{{ color }}-50/60 px-5 py-5 sm:px-7 sm:py-6">
+          <div class="mb-4 flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 flex-1">
+              <div class="mb-3 flex flex-wrap items-center gap-2">
+                <span class="inline-flex items-center rounded-full bg-{{ color }}-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-{{ color }}-800">
+                  {{ tender.country.value|country_flag }} {{ tender.source_name }}
+                </span>
+                <span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                  {{ tender.status.value }}
+                </span>
+                {% for group in tender.matched_groups %}
+                  <span class="inline-flex items-center rounded-full bg-{{ group|group_color }}-100 px-3 py-1 text-xs font-medium text-{{ group|group_color }}-800">
+                    {{ group }}
+                  </span>
+                {% endfor %}
+              </div>
+              <h1 class="max-w-4xl text-2xl font-semibold leading-tight text-slate-950 sm:text-3xl">
+                {{ tender.title }}
+              </h1>
+              <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
+                <span>Source record <span class="font-mono text-slate-700">{{ tender.external_id }}</span></span>
+                <span>First seen <span title="{{ tender.first_seen_at|isoformat }}">{{ tender.first_seen_at|timeago }}</span></span>
+              </div>
+            </div>
+            <a href="{{ tender.source_url }}"
+               target="_blank"
+               rel="noopener"
+               class="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800">
+              <i data-lucide="external-link" class="h-4 w-4"></i>
+              Open at source
+            </a>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div class="rounded-2xl border border-white/70 bg-white/90 p-4 shadow-sm shadow-slate-100">
+              <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Published</div>
+              <div class="mt-2 text-sm font-medium text-slate-900">
+                {% if tender.published_at %}
+                  {{ tender.published_at|pretty_scalar }}
+                {% else %}—{% endif %}
+              </div>
+              <div class="mt-1 text-xs text-slate-500">
+                {% if tender.published_at %}{{ tender.published_at|timeago }}{% else %}No publish timestamp{% endif %}
+              </div>
+            </div>
+            <div class="rounded-2xl border border-white/70 bg-white/90 p-4 shadow-sm shadow-slate-100">
+              <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Deadline</div>
+              <div class="mt-2 text-sm font-medium text-slate-900">
+                {% if tender.deadline_at %}
+                  {{ tender.deadline_at|pretty_scalar }}
+                {% else %}—{% endif %}
+              </div>
+              <div class="mt-1">
+                {% set d = tender.deadline_at|deadline_state %}
+                <span class="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-medium
+                             {% if d.color == 'past' %}bg-slate-100 text-slate-500{% else %}bg-{{ d.color }}-100 text-{{ d.color }}-800{% endif %}">
+                  {{ d.label }}
+                </span>
+              </div>
+            </div>
+            <div class="rounded-2xl border border-white/70 bg-white/90 p-4 shadow-sm shadow-slate-100">
+              <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Value</div>
+              <div class="mt-2 text-sm font-medium text-slate-900">
+                {% if tender.value_amount is not none %}
+                  {{ tender.value_amount|pretty_amount_with_usd(tender.value_currency) }}
+                {% else %}—{% endif %}
+              </div>
+              <div class="mt-1 text-xs text-slate-500">
+                {{ tender.value_currency or "No currency" }}
+              </div>
+            </div>
+            <div class="rounded-2xl border border-white/70 bg-white/90 p-4 shadow-sm shadow-slate-100">
+              <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Coverage</div>
+              <div class="mt-2 flex flex-wrap gap-2 text-xs">
+                <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">
+                  {{ documents|length }} docs
+                </span>
+                <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">
+                  {{ lots|length }} lots
+                </span>
+                <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">
+                  {{ source_sections|length }} source sections
+                </span>
+              </div>
+              <div class="mt-2 text-xs text-slate-500">Normalized + raw source payload</div>
+            </div>
+          </div>
         </div>
-          <ul class="space-y-3 overflow-y-auto pr-2 -mr-2 grow min-h-0">
+      </header>
+
+      <div class="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.9fr)]">
+        <section class="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70 sm:p-6">
+          <div class="mb-4 flex items-center gap-2">
+            <div class="flex h-9 w-9 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
+              <i data-lucide="file-stack" class="h-4 w-4"></i>
+            </div>
+            <div>
+              <h2 class="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Overview</h2>
+              <p class="text-sm text-slate-500">Canonical fields shared by every source.</p>
+            </div>
+          </div>
+          <dl class="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <dt class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Buyer</dt>
+              <dd class="mt-2 text-sm text-slate-900">{{ tender.buyer_name or "—" }}</dd>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <dt class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Buyer ID</dt>
+              <dd class="mt-2 font-mono text-xs text-slate-900">{{ tender.buyer_external_id or "—" }}</dd>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <dt class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Source</dt>
+              <dd class="mt-2 text-sm text-slate-900">{{ tender.source_name }}</dd>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <dt class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Country</dt>
+              <dd class="mt-2 text-sm text-slate-900">{{ tender.country.value|country_flag }} {{ tender.country.value }}</dd>
+            </div>
+          </dl>
+        </section>
+
+        {% if tender.matched_groups and tender.match_details %}
+          <section class="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70 sm:p-6">
+            <div class="mb-4 flex items-center gap-2">
+              <div class="flex h-9 w-9 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+                <i data-lucide="sparkles" class="h-4 w-4"></i>
+              </div>
+              <div>
+                <h2 class="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Why this matched</h2>
+                <p class="text-sm text-slate-500">Triggered phrases and tokens from the keyword engine.</p>
+              </div>
+            </div>
+            <div class="space-y-3">
+              {% for group in tender.matched_groups %}
+                {% set details = tender.match_details.get(group, {}) %}
+                <article class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div class="mb-3">
+                    <span class="inline-flex items-center rounded-full bg-{{ group|group_color }}-100 px-3 py-1 text-xs font-medium text-{{ group|group_color }}-800">
+                      {{ group }}
+                    </span>
+                  </div>
+                  {% if details.matched_phrases %}
+                    <div class="mb-2">
+                      <div class="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Phrases</div>
+                      <div class="flex flex-wrap gap-2">
+                        {% for phrase in details.matched_phrases %}
+                          <code class="rounded-full bg-white px-2.5 py-1 text-xs text-slate-700">{{ phrase }}</code>
+                        {% endfor %}
+                      </div>
+                    </div>
+                  {% endif %}
+                  {% if details.matched_tokens %}
+                    <div>
+                      <div class="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Tokens</div>
+                      <div class="flex flex-wrap gap-2">
+                        {% for token in details.matched_tokens %}
+                          <code class="rounded-full bg-white px-2.5 py-1 text-xs text-slate-700">{{ token }}</code>
+                        {% endfor %}
+                      </div>
+                    </div>
+                  {% endif %}
+                </article>
+              {% endfor %}
+            </div>
+          </section>
+        {% endif %}
+      </div>
+
+      {% if uzex_view %}
+        {% include "tenders/_uzex_detail.html" %}
+      {% endif %}
+
+      {% if documents and not uzex_view %}
+        <section class="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70 sm:p-6">
+          <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <div class="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                <i data-lucide="paperclip" class="h-4 w-4"></i>
+              </div>
+              <div>
+                <h2 class="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Documents ({{ documents|length }})</h2>
+                <p class="text-sm text-slate-500">Files exposed by the source connector.</p>
+              </div>
+            </div>
+            <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+              {{ documents|length }} file{{ "s" if documents|length != 1 else "" }}
+            </span>
+          </div>
+          <div class="grid gap-3">
+            {% for doc in documents %}
+              <article class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div class="min-w-0">
+                    <div class="text-sm font-semibold text-slate-900 break-words">{{ doc.name or "Document" }}</div>
+                    <div class="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                      {% if doc.category %}<span>{{ doc.category }}</span>{% endif %}
+                      {% if doc.ext %}<span class="uppercase">{{ doc.ext }}</span>{% endif %}
+                      {% if doc.size_bytes is not none %}<span>{{ doc.size_bytes|pretty_scalar }} bytes</span>{% endif %}
+                      {% if doc.size_text %}<span>{{ doc.size_text }}</span>{% endif %}
+                    </div>
+                  </div>
+                  {% if doc.url %}
+                    <a href="{{ doc.url }}"
+                       target="_blank"
+                       rel="noopener"
+                       class="inline-flex shrink-0 items-center gap-2 rounded-2xl border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-50">
+                      <i data-lucide="file-down" class="h-4 w-4"></i>
+                      Open file
+                    </a>
+                  {% endif %}
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
+
+      {% if (source_groups or source_sections) and not uzex_view %}
+        <section class="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70 sm:p-6">
+          <div class="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <div class="mb-2 flex items-center gap-2">
+                <div class="flex h-9 w-9 items-center justify-center rounded-2xl bg-{{ color }}-50 text-{{ color }}-600">
+                  <i data-lucide="blocks" class="h-4 w-4"></i>
+                </div>
+                <h2 class="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Source details</h2>
+              </div>
+              <p class="max-w-3xl text-sm text-slate-500">
+                Connector-specific fields are grouped into readable panels so each source keeps its own structure instead of collapsing into one raw dump.
+              </p>
+            </div>
+            <div class="flex flex-wrap gap-2 text-xs">
+              <span class="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-600">{{ source_groups|length }} fact groups</span>
+              <span class="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-600">{{ source_sections|length }} deep sections</span>
+            </div>
+          </div>
+
+          {% if source_groups %}
+            <div class="mb-6 grid gap-4 xl:grid-cols-2">
+              {% for group in source_groups %}
+                <section class="rounded-[24px] border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-4">
+                  <h3 class="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{{ group.title }}</h3>
+                  <dl class="grid gap-3">
+                    {% for row in group.rows %}
+                      <div class="rounded-2xl border border-slate-200 bg-white p-3">
+                        <dt class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{{ row.label }}</dt>
+                        <dd class="mt-2 text-sm text-slate-900">
+                          {{ render_presented(row.value) }}
+                        </dd>
+                      </div>
+                    {% endfor %}
+                  </dl>
+                </section>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if source_sections %}
+            <div class="space-y-4">
+              {% for section in source_sections %}
+                <section class="overflow-hidden rounded-[24px] border border-slate-200 bg-slate-50/80">
+                  <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white/80 px-4 py-3">
+                    <h3 class="text-sm font-semibold text-slate-900">{{ section.title }}</h3>
+                    {% if section.summary %}
+                      <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-500">{{ section.summary }}</span>
+                    {% endif %}
+                  </div>
+                  <div class="p-4">
+                    {{ render_presented(section.content) }}
+                  </div>
+                </section>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          <details class="mt-6 overflow-hidden rounded-[24px] border border-slate-200 bg-slate-950 text-slate-100">
+            <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
+              <span>Raw source payload</span>
+              <span class="text-xs text-slate-400">Debug JSON</span>
+            </summary>
+            <div class="border-t border-slate-800 px-4 py-4">
+              <pre class="overflow-x-auto rounded-2xl bg-black/30 p-4 text-xs leading-6 text-slate-200">{{ tender.raw_json|pretty_json }}</pre>
+            </div>
+          </details>
+        </section>
+      {% endif %}
+
+      {% if lots and not uzex_view %}
+        <section class="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70 sm:p-6">
+          <div class="mb-5 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <div class="flex h-9 w-9 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                <i data-lucide="package-2" class="h-4 w-4"></i>
+              </div>
+              <div>
+                <h2 class="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Lots</h2>
+                <p class="text-sm text-slate-500">Line items and sub-lots extracted from the source.</p>
+              </div>
+            </div>
+            <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+              {{ lots|length }} lot{{ "s" if lots|length != 1 else "" }}
+            </span>
+          </div>
+          <div class="space-y-4">
+            {% for lot in lots %}
+              {% set lot_name = lot.get("name") or lot.get("name_ru") or lot.get("title") %}
+              <article class="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                <div class="mb-4">
+                  <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Lot {{ loop.index }}</div>
+                  {% if lot_name %}
+                    <div class="mt-1 text-base font-semibold text-slate-900">{{ lot_name }}</div>
+                  {% endif %}
+                </div>
+                <dl class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {% for key, value in lot.items() %}
+                    <div class="rounded-2xl border border-slate-200 bg-white p-3">
+                      <dt class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{{ key|humanize_key }}</dt>
+                      <dd class="mt-2 text-sm text-slate-900 whitespace-pre-wrap break-words">{{ value|pretty_scalar }}</dd>
+                    </div>
+                  {% endfor %}
+                </dl>
+              </article>
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
+
+      {% if tender.change_log %}
+        <section class="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70 sm:p-6">
+          <div class="mb-4 flex items-center gap-2">
+            <div class="flex h-9 w-9 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+              <i data-lucide="history" class="h-4 w-4"></i>
+            </div>
+            <div>
+              <h2 class="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Change log</h2>
+              <p class="text-sm text-slate-500">Tracked field deltas captured during ingest.</p>
+            </div>
+          </div>
+          <ol class="space-y-3">
+            {% for entry in tender.change_log %}
+              <li class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div class="mb-2 text-xs font-medium text-slate-500">{{ entry.get("at", "") }}</div>
+                <ul class="space-y-2 text-sm">
+                  {% for field, change in (entry.get("fields") or {}).items() %}
+                    <li class="rounded-xl bg-white px-3 py-2 text-slate-700">
+                      <code class="font-semibold text-slate-900">{{ field }}</code>
+                      <span class="mx-2 text-slate-400">from</span>
+                      <span class="text-slate-500">{{ change.old }}</span>
+                      <span class="mx-2 text-slate-400">to</span>
+                      <span class="text-slate-900">{{ change.new }}</span>
+                    </li>
+                  {% endfor %}
+                </ul>
+              </li>
+            {% endfor %}
+          </ol>
+        </section>
+      {% endif %}
+    </div>
+
+    <aside class="space-y-5 xl:pt-1">
+      {% if related %}
+        <section class="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 xl:sticky xl:top-20">
+          <div class="mb-3 flex items-baseline justify-between gap-3">
+            <h2 class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">More from {{ tender.source_name }}</h2>
+            <span class="text-xs text-slate-400">{{ related|length }}</span>
+          </div>
+          <div class="max-h-[36rem] overflow-y-auto pr-1">
+          <ul class="space-y-3">
             {% for r in related %}
               {% set r_deadline = r.deadline_at|deadline_state %}
-              <li class="rounded-lg border border-gray-200 p-3">
+              <li class="rounded-2xl border border-slate-200 bg-slate-50 p-3 transition hover:border-blue-200 hover:bg-white">
                 <a href="/tenders/{{ r.id }}"
-                 class="block text-sm font-medium text-gray-900 hover:text-blue-700 leading-snug line-clamp-2">
+                   class="block text-sm font-medium leading-snug text-slate-900 hover:text-blue-700">
                   {{ r.title }}
-              </a>
-              {% if r.buyer_name %}
-                <p class="text-xs text-gray-500 truncate mt-0.5" title="{{ r.buyer_name }}">
-                  {{ r.buyer_name }}
-                </p>
-              {% endif %}
-              {% if r.matched_groups %}
-                <div class="flex flex-wrap gap-1 mt-1">
-                  {% for g in r.matched_groups %}
-                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium
-                                 bg-{{ g|group_color }}-100 text-{{ g|group_color }}-800">
-                      {{ g }}
+                </a>
+                {% if r.buyer_name %}
+                  <p class="mt-1 truncate text-xs text-slate-500" title="{{ r.buyer_name }}">{{ r.buyer_name }}</p>
+                {% endif %}
+                {% if r.matched_groups %}
+                  <div class="mt-2 flex flex-wrap gap-1.5">
+                    {% for g in r.matched_groups %}
+                      <span class="inline-flex items-center rounded-full bg-{{ g|group_color }}-100 px-2 py-0.5 text-[10px] font-medium text-{{ g|group_color }}-800">{{ g }}</span>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+                <div class="mt-3 flex items-center justify-between text-xs text-slate-500">
+                  <span>{% if r.published_at %}{{ r.published_at|timeago }}{% else %}—{% endif %}</span>
+                  {% if r.deadline_at %}
+                    <span class="inline-flex items-center rounded-full px-2 py-0.5 font-medium
+                                 {% if r_deadline.color == 'past' %}bg-slate-200 text-slate-500{% else %}bg-{{ r_deadline.color }}-100 text-{{ r_deadline.color }}-800{% endif %}">
+                      {{ r_deadline.label }}
                     </span>
-                  {% endfor %}
+                  {% endif %}
                 </div>
-              {% endif %}
-              <div class="flex items-center justify-between text-xs text-gray-500 mt-2">
-                {% if r.published_at %}
-                  <span title="Published {{ r.published_at|isoformat }}">{{ r.published_at|timeago }}</span>
-                {% else %}
-                  <span class="text-gray-400">—</span>
-                {% endif %}
-                {% if r.deadline_at %}
-                  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium
-                               {% if r_deadline.color == 'past' %}bg-gray-100 text-gray-500{% else %}bg-{{ r_deadline.color }}-100 text-{{ r_deadline.color }}-800{% endif %}">
-                    {{ r_deadline.label }}
-                  </span>
-                {% endif %}
-              </div>
-            </li>
-          {% endfor %}
-        </ul>
-      </div>
-    {% endif %}
-  </aside>
+              </li>
+            {% endfor %}
+          </ul>
+          </div>
+        </section>
+      {% endif %}
+    </aside>
+  </div>
+{% endblock %}
 
-  </div> {# end 2-column wrapper #}
+{% block scripts %}
+  {{ super() }}
+  <script>
+    (() => {
+      const activateTab = (group, target) => {
+        const buttons = group.querySelectorAll('[data-tab-target]');
+        const scope = group.closest('[data-tab-scope]');
+        if (!scope) return;
+        const panels = scope.querySelectorAll('[data-tab-panel]');
+        buttons.forEach((button) => {
+          const active = button.dataset.tabTarget === target;
+          button.classList.toggle('bg-blue-900', active);
+          button.classList.toggle('bg-slate-900', !active);
+        });
+        panels.forEach((panel) => {
+          const active = panel.dataset.tabPanel === target;
+          panel.classList.toggle('hidden', !active);
+        });
+      };
 
+      document.querySelectorAll('[data-tab-group]').forEach((group) => {
+        const first = group.querySelector('[data-tab-target]');
+        group.addEventListener('click', (event) => {
+          const button = event.target.closest('[data-tab-target]');
+          if (!button) return;
+          activateTab(group, button.dataset.tabTarget);
+        });
+        if (first) activateTab(group, first.dataset.tabTarget);
+      });
+    })();
+  </script>
 {% endblock %}

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi.templating import Jinja2Templates
+from tender_monitor.core.config import settings
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -136,6 +137,43 @@ def pretty_amount(value: Any, currency: str | None = None) -> str:
     return f"{formatted} {currency}" if currency else formatted
 
 
+def amount_in_usd(value: Any, currency: str | None = None) -> float | None:
+    if value is None:
+        return None
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        return None
+    if amount < 0:
+        return None
+    normalized_currency = (currency or "").strip().upper()
+    if not normalized_currency:
+        return None
+    rate = settings.usd_fx_rates.get(normalized_currency)
+    if rate is None:
+        return None
+    try:
+        rate_value = float(rate)
+    except (TypeError, ValueError):
+        return None
+    if rate_value <= 0:
+        return None
+    if normalized_currency == "USD":
+        return amount
+    return amount / rate_value
+
+
+def pretty_amount_with_usd(value: Any, currency: str | None = None) -> str:
+    local_value = pretty_amount(value, currency)
+    usd_value = amount_in_usd(value, currency)
+    if usd_value is None:
+        return local_value
+    usd_formatted = pretty_amount(usd_value, "USD")
+    if (currency or "").strip().upper() == "USD":
+        return usd_formatted
+    return f"{local_value} ({usd_formatted})"
+
+
 def pretty_json(value: Any) -> str:
     try:
         return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True, default=str)
@@ -244,6 +282,8 @@ def build_templates() -> Jinja2Templates:
     env.filters["country_flag"] = country_flag
     env.filters["isoformat"] = isoformat
     env.filters["pretty_amount"] = pretty_amount
+    env.filters["amount_in_usd"] = amount_in_usd
+    env.filters["pretty_amount_with_usd"] = pretty_amount_with_usd
     env.filters["pretty_json"] = pretty_json
     env.filters["humanize_key"] = humanize_key
     env.filters["pretty_scalar"] = pretty_scalar
@@ -262,6 +302,7 @@ __all__ = [
     "SOURCE_COLORS",
     "TEMPLATES_DIR",
     "build_templates",
+    "amount_in_usd",
     "country_flag",
     "deadline_state",
     "group_color",
@@ -270,6 +311,7 @@ __all__ = [
     "is_scalar",
     "isoformat",
     "pretty_amount",
+    "pretty_amount_with_usd",
     "pretty_json",
     "pretty_list_of_scalars",
     "pretty_scalar",

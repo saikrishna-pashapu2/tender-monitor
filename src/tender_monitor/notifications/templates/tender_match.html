@@ -68,7 +68,7 @@
                       <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:#6b7280;">Value</div>
                       <div style="font-size:14px;color:#111827;font-weight:500;margin-top:4px;">
                         {% if tender.value_amount is not none %}
-                          {{ tender.value_amount|pretty_amount(tender.value_currency) }}
+                          {{ tender.value_amount|pretty_amount_with_usd(tender.value_currency) }}
                         {% else %}—{% endif %}
                       </div>
                     </td>

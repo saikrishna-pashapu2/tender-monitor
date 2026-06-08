@@ -6,7 +6,7 @@ New matched tender — {{ matched_groups|join(', ') }}
 
 Published: {% if tender.published_at %}{{ tender.published_at|pretty_scalar }}{% else %}—{% endif %}
 Deadline:  {% if tender.deadline_at %}{{ tender.deadline_at|pretty_scalar }}{% else %}—{% endif %}
-Value:     {% if tender.value_amount is not none %}{{ tender.value_amount|pretty_amount(tender.value_currency) }}{% else %}—{% endif %}
+Value:     {% if tender.value_amount is not none %}{{ tender.value_amount|pretty_amount_with_usd(tender.value_currency) }}{% else %}—{% endif %}
 
 Why this matched:
 {% for group in matched_groups %}

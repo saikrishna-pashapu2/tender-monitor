@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import json
 from typing import Literal
 
 from pydantic import AnyUrl, Field, SecretStr, field_validator
@@ -43,6 +44,17 @@ class Settings(BaseSettings):
     # Public URL of the web UI; used to build links inside notification
     # emails. Override per environment (`https://tender.internal/…`).
     app_base_url: str = "http://localhost:8000"
+    usd_fx_rates: dict[str, float] = Field(
+        default_factory=lambda: {
+            "USD": 1.0,
+            "KZT": 470.17,
+            "UZS": 11970.68,
+        },
+        description=(
+            "Mapping of local-currency code to local-units-per-1-USD. "
+            'Accepts JSON in USD_FX_RATES, e.g. {"KZT":470.17,"UZS":11970.68,"USD":1}.'
+        ),
+    )
 
     @field_validator("database_url")
     @classmethod
@@ -53,6 +65,18 @@ class Settings(BaseSettings):
                 "DATABASE_URL must be a postgresql+asyncpg:// or postgresql:// DSN"
             )
         return value
+
+    @field_validator("usd_fx_rates", mode="before")
+    @classmethod
+    def _parse_usd_fx_rates(cls, value: object) -> object:
+        if value is None or isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            parsed = json.loads(value)
+            if not isinstance(parsed, dict):
+                raise ValueError("USD_FX_RATES must decode to a JSON object")
+            return parsed
+        raise ValueError("USD_FX_RATES must be a mapping or JSON object string")
 
     @property
     def email_recipients(self) -> list[str]:
