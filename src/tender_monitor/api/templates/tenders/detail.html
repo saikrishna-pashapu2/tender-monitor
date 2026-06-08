@@ -55,6 +55,7 @@
   {%- endmacro %}
 
   {% set color = tender.source_name|source_color %}
+  {% set has_source_specific_view = uzex_view or goszakup_view or mitwork_view or national_bank_view or zakup_unified_view or samruk_kazyna_view or ets_tender_view or xt_xarid_view or tendersinfo_view or uzbekistan_tenders_view %}
 
   <a href="#"
      onclick="history.back(); return false;"
@@ -245,7 +246,43 @@
         {% include "tenders/_uzex_detail.html" %}
       {% endif %}
 
-      {% if documents and not uzex_view %}
+      {% if goszakup_view %}
+        {% include "tenders/_goszakup_detail.html" %}
+      {% endif %}
+
+      {% if mitwork_view %}
+        {% include "tenders/_mitwork_detail.html" %}
+      {% endif %}
+
+      {% if national_bank_view %}
+        {% include "tenders/_national_bank_detail.html" %}
+      {% endif %}
+
+      {% if zakup_unified_view %}
+        {% include "tenders/_zakup_unified_detail.html" %}
+      {% endif %}
+
+      {% if samruk_kazyna_view %}
+        {% include "tenders/_samruk_kazyna_detail.html" %}
+      {% endif %}
+
+      {% if ets_tender_view %}
+        {% include "tenders/_ets_tender_detail.html" %}
+      {% endif %}
+
+      {% if xt_xarid_view %}
+        {% include "tenders/_xt_xarid_detail.html" %}
+      {% endif %}
+
+      {% if tendersinfo_view %}
+        {% include "tenders/_tendersinfo_detail.html" %}
+      {% endif %}
+
+      {% if uzbekistan_tenders_view %}
+        {% include "tenders/_uzbekistan_tenders_detail.html" %}
+      {% endif %}
+
+      {% if documents and not has_source_specific_view %}
         <section class="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70 sm:p-6">
           <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-2">
@@ -290,7 +327,7 @@
         </section>
       {% endif %}
 
-      {% if (source_groups or source_sections) and not uzex_view %}
+      {% if (source_groups or source_sections) and not has_source_specific_view %}
         <section class="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70 sm:p-6">
           <div class="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
@@ -360,7 +397,7 @@
         </section>
       {% endif %}
 
-      {% if lots and not uzex_view %}
+      {% if lots and not has_source_specific_view %}
         <section class="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70 sm:p-6">
           <div class="mb-5 flex items-center justify-between gap-3">
             <div class="flex items-center gap-2">

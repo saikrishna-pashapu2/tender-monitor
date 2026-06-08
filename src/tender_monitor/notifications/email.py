@@ -21,6 +21,7 @@ from tender_monitor.api.templating import (
     group_color,
     humanize_key,
     pretty_amount,
+    pretty_amount_with_usd,
     pretty_scalar,
     source_color,
     timeago,
@@ -65,6 +66,7 @@ def _env() -> Environment:
         env.filters["group_color"] = group_color
         env.filters["country_flag"] = country_flag
         env.filters["pretty_amount"] = pretty_amount
+        env.filters["pretty_amount_with_usd"] = pretty_amount_with_usd
         env.filters["pretty_scalar"] = pretty_scalar
         env.filters["humanize_key"] = humanize_key
         _email_env = env

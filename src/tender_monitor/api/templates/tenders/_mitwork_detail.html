@@ -1,0 +1,322 @@
+<section class="space-y-5">
+  <section class="overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm shadow-slate-200/70">
+    <div class="border-b border-slate-300 bg-gradient-to-r from-slate-50 via-white to-sky-50 px-5 py-4 sm:px-6">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div class="min-w-0">
+          <div class="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Eurasian Electronic Portal</div>
+          <h2 class="mt-2 text-xl font-semibold text-slate-950">
+            Закупка № {{ mitwork_view.announcement_number or tender.external_id }}
+          </h2>
+          <p class="mt-1 max-w-5xl text-sm text-slate-600">
+            {{ mitwork_view.title or tender.title }}
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          {% if mitwork_view.status %}
+            <span class="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
+              {{ mitwork_view.status }}
+            </span>
+          {% endif %}
+          <a href="{{ tender.source_url }}"
+             target="_blank"
+             rel="noopener"
+             class="inline-flex items-center gap-2 rounded-md bg-sky-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-800">
+            <i data-lucide="external-link" class="h-4 w-4"></i>
+            Открыть на EEP
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4 sm:p-6">
+      <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Начало приема</div>
+        <div class="mt-2 text-base font-semibold text-emerald-700">
+          {{ tender.published_at|pretty_scalar if tender.published_at else "—" }}
+        </div>
+        {% if mitwork_view.timeline_rows %}
+          <div class="mt-1 text-xs text-slate-500">{{ mitwork_view.timeline_rows[0].value|pretty_scalar }}</div>
+        {% endif %}
+      </div>
+      <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Окончание приема</div>
+        <div class="mt-2 text-base font-semibold text-red-600">
+          {{ tender.deadline_at|pretty_scalar if tender.deadline_at else "—" }}
+        </div>
+        {% set deadline = tender.deadline_at|deadline_state %}
+        <div class="mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-medium
+                    {% if deadline.color == 'past' %}bg-slate-200 text-slate-500{% else %}bg-{{ deadline.color }}-100 text-{{ deadline.color }}-800{% endif %}">
+          {{ deadline.label }}
+        </div>
+      </div>
+      <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Стоимость</div>
+        {% if tender.value_amount is not none %}
+          <div class="mt-2 text-lg font-semibold text-slate-950">{{ tender.value_amount|pretty_amount(tender.value_currency) }}</div>
+          {% set usd_value = tender.value_amount|amount_in_usd(tender.value_currency) %}
+          {% if usd_value is not none and (tender.value_currency or '').upper() != 'USD' %}
+            <div class="mt-1 text-base font-semibold text-slate-950">{{ usd_value|pretty_amount("USD") }}</div>
+          {% endif %}
+        {% elif mitwork_view.commercial_rows %}
+          <div class="mt-2 text-lg font-semibold text-slate-950">{{ mitwork_view.commercial_rows[0].value|pretty_scalar }}</div>
+        {% else %}
+          <div class="mt-2 text-lg font-semibold text-slate-400">—</div>
+        {% endif %}
+      </div>
+      <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Покрытие</div>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <span class="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700">{{ mitwork_view.lots|length }} lot{{ "s" if mitwork_view.lots|length != 1 else "" }}</span>
+          <span class="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700">{{ mitwork_view.documents|length }} doc{{ "s" if mitwork_view.documents|length != 1 else "" }}</span>
+        </div>
+        <div class="mt-2 text-xs text-slate-500">Listing + detail page payload</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm shadow-slate-200/70" data-tab-scope>
+    <div class="border-b border-slate-300 bg-white px-5 pt-4 sm:px-6">
+      <div class="flex flex-wrap gap-1" data-tab-group="mitwork-main">
+        <button type="button"
+                data-tab-target="mitwork-profile"
+                class="rounded-t-md border border-slate-300 bg-blue-900 px-4 py-2.5 text-sm font-medium text-white">
+          Сведения о закупке
+        </button>
+        <button type="button"
+                data-tab-target="mitwork-lots"
+                class="rounded-t-md border border-slate-300 bg-slate-900 px-4 py-2.5 text-sm font-medium text-white">
+          Лоты
+        </button>
+        <button type="button"
+                data-tab-target="mitwork-documents"
+                class="rounded-t-md border border-slate-300 bg-slate-900 px-4 py-2.5 text-sm font-medium text-white">
+          Документы
+        </button>
+      </div>
+    </div>
+
+    <div class="p-5 sm:p-6">
+      <div data-tab-panel="mitwork-profile">
+        <div class="grid gap-5 xl:grid-cols-2">
+          <section>
+            <h3 class="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Основные данные</h3>
+            <div class="overflow-hidden rounded-lg border border-slate-200">
+              <table class="min-w-full text-sm">
+                <tbody class="divide-y divide-slate-200">
+                  {% for row in mitwork_view.identity_rows %}
+                    <tr class="align-top">
+                      <th class="w-1/3 bg-slate-50 px-4 py-3 text-left font-medium text-slate-600">{{ row.label }}</th>
+                      <td class="px-4 py-3 text-slate-950">
+                        {% set value_text = row.value|string %}
+                        {% if value_text.startswith("http") %}
+                          <a href="{{ row.value }}" target="_blank" rel="noopener" class="break-all text-sky-700 hover:text-sky-900">{{ row.value }}</a>
+                        {% else %}
+                          {{ row.value|pretty_scalar }}
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section>
+            <h3 class="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Сроки</h3>
+            <div class="overflow-hidden rounded-lg border border-slate-200">
+              <table class="min-w-full text-sm">
+                <tbody class="divide-y divide-slate-200">
+                  {% for row in mitwork_view.timeline_rows %}
+                    <tr class="align-top">
+                      <th class="w-1/3 bg-slate-50 px-4 py-3 text-left font-medium text-slate-600">{{ row.label }}</th>
+                      <td class="px-4 py-3 text-slate-950">{{ row.value|pretty_scalar }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section>
+            <h3 class="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Организатор</h3>
+            <div class="overflow-hidden rounded-lg border border-slate-200">
+              <table class="min-w-full text-sm">
+                <tbody class="divide-y divide-slate-200">
+                  {% for row in mitwork_view.organizer_rows %}
+                    <tr class="align-top">
+                      <th class="w-1/3 bg-slate-50 px-4 py-3 text-left font-medium text-slate-600">{{ row.label }}</th>
+                      <td class="px-4 py-3 text-slate-950">
+                        {% set value_text = row.value|string %}
+                        {% if value_text.startswith("http") %}
+                          <a href="{{ row.value }}" target="_blank" rel="noopener" class="break-all text-sky-700 hover:text-sky-900">{{ row.value }}</a>
+                        {% else %}
+                          {{ row.value|pretty_scalar }}
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section>
+            <h3 class="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Процедура</h3>
+            <div class="overflow-hidden rounded-lg border border-slate-200">
+              <table class="min-w-full text-sm">
+                <tbody class="divide-y divide-slate-200">
+                  {% for row in mitwork_view.process_rows %}
+                    <tr class="align-top">
+                      <th class="w-1/3 bg-slate-50 px-4 py-3 text-left font-medium text-slate-600">{{ row.label }}</th>
+                      <td class="px-4 py-3 text-slate-950">
+                        {% set value_text = row.value|string %}
+                        {% if value_text.startswith("http") %}
+                          <a href="{{ row.value }}" target="_blank" rel="noopener" class="break-all text-sky-700 hover:text-sky-900">{{ row.value }}</a>
+                        {% else %}
+                          {{ row.value|pretty_scalar }}
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div data-tab-panel="mitwork-lots" class="hidden">
+        {% if mitwork_view.lots %}
+          <div class="overflow-x-auto rounded-lg border border-slate-200">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-900 text-white">
+                <tr>
+                  <th class="px-4 py-3 text-left font-medium">Номер</th>
+                  <th class="px-4 py-3 text-left font-medium">Наименование</th>
+                  <th class="px-4 py-3 text-left font-medium">Описание</th>
+                  <th class="px-4 py-3 text-left font-medium">Количество</th>
+                  <th class="px-4 py-3 text-left font-medium">Цена</th>
+                  <th class="px-4 py-3 text-left font-medium">Сумма</th>
+                  <th class="px-4 py-3 text-left font-medium">Заявки</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200 bg-white">
+                {% for lot in mitwork_view.lots %}
+                  <tr class="align-top">
+                    <td class="px-4 py-3 text-slate-600">
+                      <div>{{ lot.get("number") or loop.index }}</div>
+                      {% if lot.get("classification_code") %}
+                        <div class="mt-1 rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-500">{{ lot.get("classification_code") }}</div>
+                      {% endif %}
+                    </td>
+                    <td class="max-w-md px-4 py-3 font-medium text-slate-950">
+                      {% if lot.get("lot_url") %}
+                        <a href="{{ lot.get('lot_url') }}" target="_blank" rel="noopener" class="text-sky-700 hover:text-sky-900">{{ lot.get("name_ru") or "—" }}</a>
+                      {% else %}
+                        {{ lot.get("name_ru") or "—" }}
+                      {% endif %}
+                    </td>
+                    <td class="max-w-lg px-4 py-3 text-slate-700">{{ lot.get("description_ru") or "—" }}</td>
+                    <td class="px-4 py-3 text-slate-700">{{ lot.get("quantity_text") or "—" }}</td>
+                    <td class="px-4 py-3 text-slate-700">{{ lot.get("unit_price_text") or "—" }}</td>
+                    <td class="px-4 py-3 font-semibold text-slate-950">
+                      {% if lot.get("total_amount") %}
+                        {{ lot.get("total_amount")|pretty_amount(lot.get("currency")) }}
+                        {% set lot_usd = lot.get("total_amount")|amount_in_usd(lot.get("currency")) %}
+                        {% if lot_usd is not none and (lot.get("currency") or "").upper() != "USD" %}
+                          <div class="mt-1 text-sm font-semibold text-slate-950">{{ lot_usd|pretty_amount("USD") }}</div>
+                        {% endif %}
+                      {% else %}
+                        {{ lot.get("total_amount_text") or "—" }}
+                      {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-slate-700">{{ lot.get("submitted_bids_text") or "—" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% if mitwork_view.primary_lot_rows %}
+            <div class="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <h3 class="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Выбранный лот</h3>
+              <dl class="grid gap-3 md:grid-cols-2">
+                {% for row in mitwork_view.primary_lot_rows %}
+                  <div class="rounded-md border border-slate-200 bg-white p-3">
+                    <dt class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{{ row.label }}</dt>
+                    <dd class="mt-2 text-sm text-slate-900 whitespace-pre-wrap break-words">
+                      {% set value_text = row.value|string %}
+                      {% if value_text.startswith("http") %}
+                        <a href="{{ row.value }}" target="_blank" rel="noopener" class="break-all text-sky-700 hover:text-sky-900">{{ row.value }}</a>
+                      {% else %}
+                        {{ row.value|pretty_scalar }}
+                      {% endif %}
+                    </dd>
+                  </div>
+                {% endfor %}
+              </dl>
+            </div>
+          {% endif %}
+        {% else %}
+          <p class="text-sm text-slate-500">No lots were extracted for this Mitwork tender.</p>
+        {% endif %}
+      </div>
+
+      <div data-tab-panel="mitwork-documents" class="hidden">
+        {% if mitwork_view.documents %}
+          <div class="grid gap-4 md:grid-cols-2">
+            {% for doc in mitwork_view.documents %}
+              <article class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{{ doc.get("category") or "Document" }}</div>
+                    <h3 class="mt-2 break-words text-sm font-semibold text-slate-950">{{ doc.get("name") or "Document" }}</h3>
+                    <div class="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                      {% if doc.get("ext") %}<span class="rounded-full bg-white px-2 py-0.5 font-medium">{{ doc.get("ext") }}</span>{% endif %}
+                      {% if doc.get("size_text") %}<span class="rounded-full bg-white px-2 py-0.5">{{ doc.get("size_text") }}</span>{% endif %}
+                      {% if doc.get("uploaded_at_text") %}<span class="rounded-full bg-white px-2 py-0.5">{{ doc.get("uploaded_at_text") }}</span>{% endif %}
+                    </div>
+                    {% if doc.get("hash") %}
+                      <div class="mt-3 break-all rounded-md bg-white px-2 py-1 font-mono text-[11px] text-slate-500">{{ doc.get("hash") }}</div>
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="mt-4 flex flex-wrap gap-2">
+                  {% if doc.get("preview_url") %}
+                    <a href="{{ doc.get('preview_url') }}"
+                       target="_blank"
+                       rel="noopener"
+                       class="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100">
+                      <i data-lucide="eye" class="h-4 w-4"></i>
+                      Preview
+                    </a>
+                  {% endif %}
+                  {% if doc.get("url") %}
+                    <a href="{{ doc.get('url') }}"
+                       target="_blank"
+                       rel="noopener"
+                       class="inline-flex items-center gap-2 rounded-md bg-sky-800 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-sky-700">
+                      <i data-lucide="file-down" class="h-4 w-4"></i>
+                      Download
+                    </a>
+                  {% endif %}
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="text-sm text-slate-500">No documentation files were extracted for this tender.</p>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <details class="overflow-hidden rounded-lg border border-slate-300 bg-slate-950 text-slate-100">
+    <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
+      <span>Raw source payload</span>
+      <span class="text-xs text-slate-400">Debug JSON</span>
+    </summary>
+    <div class="border-t border-slate-800 px-4 py-4">
+      <pre class="overflow-x-auto rounded-lg bg-black/30 p-4 text-xs leading-6 text-slate-200">{{ tender.raw_json|pretty_json }}</pre>
+    </div>
+  </details>
+</section>

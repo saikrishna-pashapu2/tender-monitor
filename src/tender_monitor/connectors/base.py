@@ -67,9 +67,9 @@ class Connector(ABC):
         # ``_fetch_raw`` and cleared in a finally afterwards.
         # ``None`` means "no hint provided"; an empty set means "hint
         # provided but no IDs known". Most connectors ignore this and
-        # never read it; expensive-detail-fetch ones (national_bank)
-        # consult it to skip already-processed tenders. See CLAUDE.md
-        # under "Scheduler and ingestion" for the contract.
+        # never read it. Connectors must not use the hint in a way that
+        # prevents existing tenders from being refreshed and rematched.
+        # See AGENTS.md under "Scheduler and ingestion" for the contract.
         self._known_external_ids: set[str] | None = None
 
     def _make_client(self) -> httpx.AsyncClient:

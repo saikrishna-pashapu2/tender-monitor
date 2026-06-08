@@ -290,7 +290,7 @@ def test_parse_lots_tab_extracts_announcement_lots() -> None:
     assert parsed[0]["name_ru"] == "Услуги по мытью окон здания"
     assert parsed[0]["description_ru"].startswith("Очистка окон")
     assert parsed[0]["quantity_text"] == "50"
-    assert parsed[0]["amount"] == Decimal("17241.37")
+    assert parsed[0]["amount"] == "17241.37"
     assert parsed[0]["lot_url"].endswith("/17013627/41804689")
 
 
@@ -648,7 +648,7 @@ async def test_fetch_latest_stops_when_pagination_repeats_same_lots() -> None:
     assert pages_requested == [1, 2]
 
 
-async def test_fetch_latest_skips_known_lots_without_fetching_announcements() -> None:
+async def test_fetch_latest_ignores_known_ids_and_refreshes_matches() -> None:
     rows = "".join(
         _build_listing_row(
             lot_id=f"810000{i}",
@@ -680,7 +680,7 @@ async def test_fetch_latest_skips_known_lots_without_fetching_announcements() ->
     connector = GoszakupConnector(http_client_factory=_client_factory(transport))
     result = await connector.fetch_latest(known_external_ids=known_ids)
 
-    assert result.raw_item_count == 0
-    assert len(result.tenders) == 0
-    assert pages_requested == [1]
-    assert announcement_hits == 0
+    assert result.raw_item_count == 50
+    assert len(result.tenders) == 50
+    assert pages_requested == [1, 2]
+    assert announcement_hits == 150

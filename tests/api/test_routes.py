@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
@@ -95,8 +96,124 @@ def test_detail_endpoint_returns_200_for_existing(client: TestClient) -> None:
     assert resp.status_code == 200
     assert "Open at source" in resp.text
     assert "Why this matched" in resp.text
-    assert "Source details" in resp.text
+    assert "Просмотр объявления" in resp.text
+    assert "Общие сведения" in resp.text
     assert "Raw source payload" in resp.text
+
+
+def test_detail_endpoint_renders_goszakup_source_layout(client: TestClient) -> None:
+    tender_id = _credit_rating_tender_id(client)
+    resp = client.get(f"/tenders/{tender_id}")
+    assert resp.status_code == 200
+    assert "Портал государственных закупок" in resp.text
+    assert "Выбранный лот" in resp.text
+    assert "Документация" in resp.text
+    assert "Техническая спецификация" in resp.text
+
+
+def test_detail_endpoint_renders_mitwork_source_layout(client: TestClient) -> None:
+    tender_id = _mitwork_tender_id(client)
+    resp = client.get(f"/tenders/{tender_id}")
+    assert resp.status_code == 200
+    assert "Eurasian Electronic Portal" in resp.text
+    assert "Сведения о закупке" in resp.text
+    assert "Лоты" in resp.text
+    assert "contract_project_s_2026_193447_v1.pdf" in resp.text
+    assert "Consulting services for assessment/analysis of activities" in resp.text
+
+
+def test_detail_endpoint_renders_national_bank_source_layout(
+    client: TestClient,
+) -> None:
+    tender_id = _national_bank_tender_id(client)
+    resp = client.get(f"/tenders/{tender_id}")
+    assert resp.status_code == 200
+    assert "National Bank of Kazakhstan Procurement Portal" in resp.text
+    assert "Информация о лоте" in resp.text
+    assert "Место поставки" in resp.text
+    assert "ПД_ ТР Сатпаева.docx" in resp.text
+    assert "dinara.beisbayeva@nationalbank.kz" in resp.text
+
+
+def test_detail_endpoint_renders_zakup_unified_source_layout(
+    client: TestClient,
+) -> None:
+    tender_id = _zakup_unified_tender_id(client)
+    resp = client.get(f"/tenders/{tender_id}")
+    assert resp.status_code == 200
+    assert "Unified Procurement Portal of Kazakhstan" in resp.text
+    assert "Объявление № 39385974" in resp.text
+    assert "Поставка цемента марки М500" in resp.text
+    assert "Изделия из бетона" in resp.text
+    assert "г. Алматы, склад №3" in resp.text
+
+
+def test_detail_endpoint_renders_samruk_kazyna_source_layout(
+    client: TestClient,
+) -> None:
+    tender_id = _samruk_kazyna_tender_id(client)
+    resp = client.get(f"/tenders/{tender_id}")
+    assert resp.status_code == 200
+    assert "Samruk-Kazyna Electronic Procurement" in resp.text
+    assert "Объявление № 1220290" in resp.text
+    assert "Работы по капитальному ремонту сетей электроснабжения" in resp.text
+    assert "Тендерная_документация_1198864_2026-04-03.pdf" in resp.text
+    assert "luteuliyeva@azhk.kz" in resp.text
+
+
+def test_detail_endpoint_renders_ets_tender_source_layout(
+    client: TestClient,
+) -> None:
+    tender_id = _ets_tender_tender_id(client)
+    resp = client.get(f"/tenders/{tender_id}")
+    assert resp.status_code == 200
+    assert "ETS-Tender Commercial Procurement" in resp.text
+    assert "Запрос предложений № 2085996" in resp.text
+    assert "241031.900.000011" in resp.text
+    assert "Безналичный расчёт" in resp.text
+    assert "Техническая спецификация" in resp.text
+
+
+def test_detail_endpoint_renders_xt_xarid_source_layout(
+    client: TestClient,
+) -> None:
+    tender_id = _xt_xarid_tender_id(client)
+    resp = client.get(f"/tenders/{tender_id}")
+    assert resp.status_code == 200
+    assert "XT-Xarid Public Procurement" in resp.text
+    assert "Тендер № x-1" in resp.text
+    assert "Documentation objections" in resp.text
+    assert "74.90.13.000-00001" in resp.text
+    assert "Uzbekistan Railways" in resp.text
+    assert "Documents (1)" in resp.text
+    assert "climate-strategy.pdf" in resp.text
+
+
+def test_detail_endpoint_renders_tendersinfo_source_layout(
+    client: TestClient,
+) -> None:
+    tender_id = _tendersinfo_tender_id(client)
+    resp = client.get(f"/tenders/{tender_id}")
+    assert resp.status_code == 200
+    assert "TendersInfo Commercial Aggregator" in resp.text
+    assert "Notice 532912293" in resp.text
+    assert "Environment And Pollution" in resp.text
+    assert "United Nations Development Programme" in resp.text
+    assert "Aggregator payload" in resp.text
+
+
+def test_detail_endpoint_renders_uzbekistan_tenders_source_layout(
+    client: TestClient,
+) -> None:
+    tender_id = _uzbekistan_tenders_tender_id(client)
+    resp = client.get(f"/tenders/{tender_id}")
+    assert resp.status_code == 200
+    assert "UzbekistanTenders Commercial Aggregator" in resp.text
+    assert "UZT Ref No. 86ddab7" in resp.text
+    assert "Finance and Related Services" in resp.text
+    assert "Central Bank of the Republic of Uzbekistan" in resp.text
+    assert "Provision of services for assigning an international credit rating" in resp.text
+    assert "JSON-LD detail" in resp.text
 
 
 def test_detail_endpoint_renders_related_sidebar(client: TestClient) -> None:
@@ -141,9 +258,9 @@ def test_api_tenders_response_shape(client: TestClient) -> None:
     resp = client.get("/api/tenders?per_page=5&matched=all")
     body = resp.json()
     assert set(body.keys()) >= {"tenders", "total", "page", "per_page", "pages"}
-    assert body["total"] == 12
+    assert body["total"] == 19
     assert body["per_page"] == 5
-    assert body["pages"] == 3
+    assert body["pages"] == 4
     assert len(body["tenders"]) == 5
     sample = body["tenders"][0]
     assert {"id", "source_name", "external_id", "title", "country"} <= set(sample.keys())
@@ -151,10 +268,10 @@ def test_api_tenders_response_shape(client: TestClient) -> None:
 
 def test_api_tenders_default_returns_matched_only(client: TestClient) -> None:
     # Without an explicit ``matched`` param the API hides unmatched
-    # tenders. 6 of 12 seeded rows have matched_groups.
+    # tenders. 8 of 19 seeded rows have matched_groups.
     resp = client.get("/api/tenders?per_page=100")
     body = resp.json()
-    assert body["total"] == 6
+    assert body["total"] == 8
     for entry in body["tenders"]:
         assert entry["matched_groups"], (
             "default API view should only return matched tenders, "
@@ -177,6 +294,32 @@ def test_list_endpoint_matched_all_shows_unmatched(client: TestClient) -> None:
     assert "Office supplies" in resp.text
 
 
+def test_list_endpoint_exposes_hidden_dev_all_tenders_option(
+    client: TestClient,
+) -> None:
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert (
+        '<details class="group border-t border-slate-200 '
+        'pt-4 text-sm text-slate-500">'
+    ) in resp.text
+    assert 'name="matched"' in resp.text
+    assert "Developer" in resp.text
+    assert "All tenders" in resp.text
+
+
+def test_list_endpoint_marks_dev_all_tenders_option_active(
+    client: TestClient,
+) -> None:
+    resp = client.get("/?matched=all")
+    assert resp.status_code == 200
+    assert (
+        '<details class="group border-t border-slate-200 '
+        'pt-4 text-sm text-slate-500" open>'
+    ) in resp.text
+    assert '<option value="all" selected>All tenders</option>' in resp.text
+
+
 def test_api_tender_detail_returns_tender_read_shape(client: TestClient) -> None:
     tender_id = _credit_rating_tender_id(client)
     resp = client.get(f"/api/tenders/{tender_id}")
@@ -196,7 +339,17 @@ def test_api_sources_returns_list(client: TestClient) -> None:
     body = resp.json()
     assert isinstance(body, list)
     names = {entry["name"] for entry in body}
-    assert names == {"goszakup", "xt-xarid"}
+    assert names == {
+        "ets_tender",
+        "goszakup",
+        "mitwork",
+        "national_bank",
+        "samruk_kazyna",
+        "tendersinfo",
+        "uzbekistan_tenders",
+        "xt_xarid",
+        "zakup_unified",
+    }
 
 
 def test_openapi_renders(client: TestClient) -> None:
@@ -224,9 +377,76 @@ def _credit_rating_tender_id(client: TestClient) -> str:
 
 
 def _xt_xarid_tender_id(client: TestClient) -> str:
-    resp = client.get("/api/tenders?source=xt-xarid&matched=all&per_page=100")
+    resp = client.get("/api/tenders?source=xt_xarid&matched=all&per_page=100")
     resp.raise_for_status()
     for entry in resp.json()["tenders"]:
         if entry["external_id"] == "x-1":
             return entry["id"]
-    raise AssertionError("seeded xt-xarid tender x-1 was not returned")
+    raise AssertionError("seeded xt_xarid tender x-1 was not returned")
+
+
+def _mitwork_tender_id(client: TestClient) -> str:
+    resp = client.get("/api/tenders?source=mitwork&matched=all&per_page=100")
+    resp.raise_for_status()
+    for entry in resp.json()["tenders"]:
+        if entry["external_id"] == "194361":
+            return entry["id"]
+    raise AssertionError("seeded mitwork tender 194361 was not returned")
+
+
+def _national_bank_tender_id(client: TestClient) -> str:
+    resp = client.get("/api/tenders?source=national_bank&matched=all&per_page=100")
+    resp.raise_for_status()
+    for entry in resp.json()["tenders"]:
+        if entry["external_id"] == "228344":
+            return entry["id"]
+    raise AssertionError("seeded national_bank tender 228344 was not returned")
+
+
+def _zakup_unified_tender_id(client: TestClient) -> str:
+    resp = client.get("/api/tenders?source=zakup_unified&matched=all&per_page=100")
+    resp.raise_for_status()
+    for entry in resp.json()["tenders"]:
+        if entry["external_id"] == "39385974":
+            return entry["id"]
+    raise AssertionError("seeded zakup_unified tender 39385974 was not returned")
+
+
+def _samruk_kazyna_tender_id(client: TestClient) -> str:
+    resp = client.get("/api/tenders?source=samruk_kazyna&matched=all&per_page=100")
+    resp.raise_for_status()
+    for entry in resp.json()["tenders"]:
+        if entry["external_id"] == "1220290":
+            return entry["id"]
+    raise AssertionError("seeded samruk_kazyna tender 1220290 was not returned")
+
+
+def _ets_tender_tender_id(client: TestClient) -> str:
+    resp = client.get("/api/tenders?source=ets_tender&matched=all&per_page=100")
+    resp.raise_for_status()
+    for entry in resp.json()["tenders"]:
+        if entry["external_id"] == "2085996":
+            return entry["id"]
+    raise AssertionError("seeded ets_tender tender 2085996 was not returned")
+
+
+def _tendersinfo_tender_id(client: TestClient) -> str:
+    resp = client.get("/api/tenders?source=tendersinfo&matched=all&per_page=100")
+    resp.raise_for_status()
+    for entry in resp.json()["tenders"]:
+        if entry["external_id"] == "532912293":
+            return entry["id"]
+    raise AssertionError("seeded tendersinfo tender 532912293 was not returned")
+
+
+def _uzbekistan_tenders_tender_id(client: TestClient) -> str:
+    resp = client.get(
+        "/api/tenders?source=uzbekistan_tenders&matched=all&per_page=100"
+    )
+    resp.raise_for_status()
+    for entry in resp.json()["tenders"]:
+        if entry["external_id"] == "86ddab7":
+            return entry["id"]
+    raise AssertionError(
+        "seeded uzbekistan_tenders tender 86ddab7 was not returned"
+    )

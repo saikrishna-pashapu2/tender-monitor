@@ -319,17 +319,16 @@ async def test_fetch_latest_soft_since_stops_pagination_after_threshold() -> Non
     transport = httpx.MockTransport(handler)
     connector = EtsTenderConnector(http_client_factory=_client_factory(transport))
 
-    # since is AFTER every published date in the fixture (which max at
-    # 18.05.2026 11:12 KZ = 06:12 UTC). All rows in window are filtered
-    # out and the connector breaks before page 2 once enough old rows
-    # are seen in sequence.
+    # since is AFTER every parseable published date in the fixture. The
+    # closed tender has hidden listing dates, so it is kept rather than
+    # dropped on a parser miss.
     since = datetime(2026, 5, 19, 0, 0, tzinfo=UTC)
     result = await connector.fetch_latest(since=since)
 
-    assert result.tenders == []
+    assert [t.external_id for t in result.tenders] == ["2085989"]
     listing_calls = [r for r in captured if _is_listing(r)]
     pages_called = [r.url.params.get("page") for r in listing_calls]
-    assert "2" not in pages_called
+    assert pages_called == [None, "2"]
 
 
 async def test_fetch_latest_detail_403_keeps_listing_fields() -> None:

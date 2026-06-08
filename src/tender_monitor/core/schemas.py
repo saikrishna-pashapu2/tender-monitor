@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -158,7 +158,7 @@ class TenderUpsert(BaseModel):
     def _coerce_raw_json_json_safe(
         cls, value: dict[str, Any] | None
     ) -> dict[str, Any]:
-        return _json_safe(value or {})
+        return cast(dict[str, Any], _json_safe(value or {}))
 
 
 __all__ = [

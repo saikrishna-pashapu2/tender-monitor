@@ -1,0 +1,236 @@
+<section class="space-y-5">
+  <section class="overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm shadow-slate-200/70">
+    <div class="border-b border-slate-300 bg-slate-100 px-5 py-4 sm:px-6">
+      <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div class="min-w-0">
+          <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Портал государственных закупок</div>
+          <h2 class="mt-2 text-xl font-semibold text-slate-950">
+            Просмотр объявления № {{ goszakup_view.announcement_number or goszakup_view.announcement_id or tender.external_id }}
+          </h2>
+          {% if goszakup_view.announcement_title %}
+            <p class="mt-1 text-sm text-slate-600">{{ goszakup_view.announcement_title }}</p>
+          {% endif %}
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          {% if goszakup_view.announcement_status %}
+            <span class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">
+              {{ goszakup_view.announcement_status }}
+            </span>
+          {% endif %}
+          <a href="{{ tender.source_url }}"
+             target="_blank"
+             rel="noopener"
+             class="inline-flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800">
+            <i data-lucide="external-link" class="h-4 w-4"></i>
+            Открыть на портале
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid gap-x-8 gap-y-4 px-5 py-5 sm:px-6 lg:grid-cols-2">
+      {% for row in goszakup_view.announcement_rows %}
+        <div class="grid gap-2 sm:grid-cols-[12rem_1fr]">
+          <div class="text-sm font-medium text-slate-500">{{ row.label }}</div>
+          <div class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-950">
+            {{ row.value|pretty_scalar }}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm shadow-slate-200/70" data-tab-scope>
+    <div class="border-b border-slate-300 bg-white px-5 pt-4 sm:px-6">
+      <div class="flex flex-wrap gap-1" data-tab-group="goszakup-main">
+        <button type="button"
+                data-tab-target="goszakup-general"
+                class="rounded-t-md border border-slate-300 bg-blue-900 px-4 py-2.5 text-sm font-medium text-white">
+          Общие сведения
+        </button>
+        <button type="button"
+                data-tab-target="goszakup-selected-lot"
+                class="rounded-t-md border border-slate-300 bg-slate-900 px-4 py-2.5 text-sm font-medium text-white">
+          Выбранный лот
+        </button>
+        <button type="button"
+                data-tab-target="goszakup-lots"
+                class="rounded-t-md border border-slate-300 bg-slate-900 px-4 py-2.5 text-sm font-medium text-white">
+          Лоты
+        </button>
+        <button type="button"
+                data-tab-target="goszakup-documents"
+                class="rounded-t-md border border-slate-300 bg-slate-900 px-4 py-2.5 text-sm font-medium text-white">
+          Документация
+        </button>
+      </div>
+    </div>
+
+    <div class="p-5 sm:p-6">
+      <div data-tab-panel="goszakup-general">
+        <div class="grid gap-5 xl:grid-cols-2">
+          <section>
+            <h3 class="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Общие сведения</h3>
+            <div class="overflow-hidden rounded-lg border border-slate-200">
+              <table class="min-w-full text-sm">
+                <tbody class="divide-y divide-slate-200">
+                  {% for row in goszakup_view.general_rows %}
+                    <tr class="align-top">
+                      <th class="w-1/3 bg-slate-50 px-4 py-3 text-left font-medium text-slate-600">{{ row.label }}</th>
+                      <td class="px-4 py-3 text-slate-950">{{ row.value|pretty_scalar }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section>
+            <h3 class="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Организатор</h3>
+            <div class="overflow-hidden rounded-lg border border-slate-200">
+              <table class="min-w-full text-sm">
+                <tbody class="divide-y divide-slate-200">
+                  {% for row in goszakup_view.organizer_rows %}
+                    <tr class="align-top">
+                      <th class="w-1/3 bg-slate-50 px-4 py-3 text-left font-medium text-slate-600">{{ row.label }}</th>
+                      <td class="px-4 py-3 text-slate-950">{{ row.value|pretty_scalar }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div data-tab-panel="goszakup-selected-lot" class="hidden">
+        <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h3 class="text-lg font-semibold text-slate-950">{{ tender.title }}</h3>
+            <p class="mt-1 text-sm text-slate-500">Lot record {{ tender.external_id }}</p>
+          </div>
+          {% if tender.value_amount is not none %}
+            <div class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-right">
+              <div class="text-sm font-semibold text-slate-950">{{ tender.value_amount|pretty_amount(tender.value_currency) }}</div>
+              {% set usd_value = tender.value_amount|amount_in_usd(tender.value_currency) %}
+              {% if usd_value is not none and (tender.value_currency or '').upper() != 'USD' %}
+                <div class="text-sm font-semibold text-slate-950">{{ usd_value|pretty_amount("USD") }}</div>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+
+        <div class="overflow-hidden rounded-lg border border-slate-200">
+          <table class="min-w-full text-sm">
+            <tbody class="divide-y divide-slate-200">
+              {% for row in goszakup_view.selected_lot_rows %}
+                <tr class="align-top">
+                  <th class="w-72 bg-slate-50 px-4 py-3 text-left font-medium text-slate-600">{{ row.label }}</th>
+                  <td class="px-4 py-3 text-slate-950">
+                    {% if row.label.startswith("Ссылка") %}
+                      <a href="{{ row.value }}" target="_blank" rel="noopener" class="text-blue-700 hover:text-blue-900">{{ row.value }}</a>
+                    {% else %}
+                      {{ row.value|pretty_scalar }}
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div data-tab-panel="goszakup-lots" class="hidden">
+        {% if goszakup_view.announcement_lots %}
+          <div class="overflow-x-auto rounded-lg border border-slate-200">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-900 text-white">
+                <tr>
+                  <th class="px-4 py-3 text-left font-medium">№</th>
+                  <th class="px-4 py-3 text-left font-medium">Наименование</th>
+                  <th class="px-4 py-3 text-left font-medium">Описание</th>
+                  <th class="px-4 py-3 text-left font-medium">Количество</th>
+                  <th class="px-4 py-3 text-left font-medium">Сумма</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200 bg-white">
+                {% for lot in goszakup_view.announcement_lots %}
+                  <tr class="align-top {% if lot.get('lot_url') == tender.source_url or lot.get('name_ru') == tender.title %}bg-blue-50/60{% endif %}">
+                    <td class="px-4 py-3 text-slate-600">{{ lot.get("sequence_text") or loop.index }}</td>
+                    <td class="px-4 py-3 font-medium text-slate-950">
+                      {% if lot.get("lot_url") %}
+                        <a href="{{ lot.get('lot_url') }}" target="_blank" rel="noopener" class="text-blue-700 hover:text-blue-900">{{ lot.get("name_ru") or "—" }}</a>
+                      {% else %}
+                        {{ lot.get("name_ru") or "—" }}
+                      {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-slate-700">{{ lot.get("description_ru") or "—" }}</td>
+                    <td class="px-4 py-3 text-slate-700">{{ lot.get("quantity_text") or "—" }}</td>
+                    <td class="px-4 py-3 font-medium text-slate-950">
+                      {% if lot.get("amount") %}
+                        {{ lot.get("amount")|pretty_amount(lot.get("currency")) }}
+                      {% else %}
+                        {{ lot.get("amount_text") or "—" }}
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="text-sm text-slate-500">No announcement lots were extracted for this tender.</p>
+        {% endif %}
+      </div>
+
+      <div data-tab-panel="goszakup-documents" class="hidden">
+        {% if goszakup_view.documents %}
+          <div class="overflow-x-auto rounded-lg border border-slate-200">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-900 text-white">
+                <tr>
+                  <th class="px-4 py-3 text-left font-medium">Наименование документа</th>
+                  <th class="px-4 py-3 text-left font-medium">Признак</th>
+                  <th class="px-4 py-3 text-left font-medium">Файл</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200 bg-white">
+                {% for doc in goszakup_view.documents %}
+                  <tr class="align-top">
+                    <td class="px-4 py-3 font-medium text-slate-950">{{ doc.get("name") or "Document" }}</td>
+                    <td class="px-4 py-3 text-slate-700">{{ doc.get("signed_text") or doc.get("category") or "—" }}</td>
+                    <td class="px-4 py-3">
+                      {% if doc.get("url") %}
+                        <a href="{{ doc.get('url') }}"
+                           target="_blank"
+                           rel="noopener"
+                           class="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 transition hover:bg-blue-100">
+                          <i data-lucide="file-down" class="h-4 w-4"></i>
+                          Перейти
+                        </a>
+                      {% else %}
+                        <span class="text-slate-400">—</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="text-sm text-slate-500">No documentation files were extracted for this tender.</p>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <details class="overflow-hidden rounded-lg border border-slate-300 bg-slate-950 text-slate-100">
+    <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
+      <span>Raw source payload</span>
+      <span class="text-xs text-slate-400">Debug JSON</span>
+    </summary>
+    <div class="border-t border-slate-800 px-4 py-4">
+      <pre class="overflow-x-auto rounded-lg bg-black/30 p-4 text-xs leading-6 text-slate-200">{{ tender.raw_json|pretty_json }}</pre>
+    </div>
+  </details>
+</section>

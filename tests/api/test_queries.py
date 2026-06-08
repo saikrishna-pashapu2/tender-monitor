@@ -22,8 +22,11 @@ async def test_list_tenders_no_filters_returns_all_paged(
     seeded_session: AsyncSession,
 ) -> None:
     result = await list_tenders(seeded_session, TenderFilters(), "newest", 1, 25)
-    assert result.total == 12
-    assert len(result.rows) == 12
+    expected_total = len(
+        (await seeded_session.execute(select(Tender))).scalars().all()
+    )
+    assert result.total == expected_total
+    assert len(result.rows) == expected_total
 
 
 async def test_list_tenders_filter_country(seeded_session: AsyncSession) -> None:
@@ -70,7 +73,11 @@ async def test_list_tenders_filter_matched_none(seeded_session: AsyncSession) ->
         1,
         25,
     )
-    assert result.total == 6
+    seeded_tenders = (
+        await seeded_session.execute(select(Tender))
+    ).scalars().all()
+    expected_total = sum(1 for row in seeded_tenders if not row.matched_groups)
+    assert result.total == expected_total
     assert all(row.matched_groups == [] for row in result.rows)
 
 
@@ -139,7 +146,10 @@ async def test_list_tenders_date_range_filter(seeded_session: AsyncSession) -> N
         1,
         25,
     )
-    assert 1 <= result.total < 12
+    total_seeded = len(
+        (await seeded_session.execute(select(Tender))).scalars().all()
+    )
+    assert 1 <= result.total < total_seeded
     for row in result.rows:
         assert row.published_at is not None
         assert datetime(2026, 5, 13, tzinfo=UTC) <= row.published_at
@@ -181,11 +191,13 @@ async def test_list_tenders_pagination_returns_correct_slice(
     page1 = await list_tenders(seeded_session, TenderFilters(), "newest", 1, 5)
     page2 = await list_tenders(seeded_session, TenderFilters(), "newest", 2, 5)
     page3 = await list_tenders(seeded_session, TenderFilters(), "newest", 3, 5)
+    page4 = await list_tenders(seeded_session, TenderFilters(), "newest", 4, 5)
     assert len(page1.rows) == 5
     assert len(page2.rows) == 5
-    assert len(page3.rows) == 2
-    ids = {row.id for row in page1.rows + page2.rows + page3.rows}
-    assert len(ids) == 12
+    assert len(page3.rows) == 5
+    assert len(page4.rows) == page1.total - 15
+    ids = {row.id for row in page1.rows + page2.rows + page3.rows + page4.rows}
+    assert len(ids) == page1.total
 
 
 async def test_list_tenders_combined_filters(seeded_session: AsyncSession) -> None:

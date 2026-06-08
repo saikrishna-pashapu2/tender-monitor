@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi.templating import Jinja2Templates
+
 from tender_monitor.core.config import settings
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -301,8 +302,8 @@ __all__ = [
     "GROUP_COLORS",
     "SOURCE_COLORS",
     "TEMPLATES_DIR",
-    "build_templates",
     "amount_in_usd",
+    "build_templates",
     "country_flag",
     "deadline_state",
     "group_color",

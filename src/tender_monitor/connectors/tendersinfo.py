@@ -314,8 +314,8 @@ class TendersinfoConnector(Connector):
                 if not isinstance(item, dict):
                     continue
                 dedupe_key = str(
-                    item.get("url")
-                    or item.get("site_tender_id")
+                    item.get("site_tender_id")
+                    or item.get("url")
                     or ""
                 ).strip()
                 if not dedupe_key or dedupe_key in seen_keys:

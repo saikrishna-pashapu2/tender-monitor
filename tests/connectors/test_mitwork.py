@@ -142,9 +142,11 @@ def test_parse_kz_local_datetime_ignores_trailing_helper_text() -> None:
 
 def test_status_mapping() -> None:
     assert STATUS_MAPPING["Опубликовано"] is TenderStatus.open
+    assert STATUS_MAPPING["Завершено"] is TenderStatus.closed
+    assert STATUS_MAPPING["Отменено"] is TenderStatus.cancelled
     # Unknown / empty / None fall through.
     assert (
-        STATUS_MAPPING.get("Завершено", TenderStatus.unknown)
+        STATUS_MAPPING.get("Новый статус", TenderStatus.unknown)
         is TenderStatus.unknown
     )
     assert STATUS_MAPPING.get("", TenderStatus.unknown) is TenderStatus.unknown
@@ -279,7 +281,7 @@ def test_parse_detail_page_extracts_fields_documents_and_lots() -> None:
     assert lots[0]["name_ru"].startswith("Услуги по обработке территорий")
     assert lots[0]["description_ru"].startswith("Химическая обработка")
     assert lots[0]["currency"] == "KZT"
-    assert lots[0]["total_amount"] == Decimal("2000000.00")
+    assert lots[0]["total_amount"] == "2000000.00"
 
 
 # ---------------------------------------------------------------------------

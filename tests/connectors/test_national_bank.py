@@ -490,7 +490,7 @@ def test_mitwork_helpers_imported_from_html_module() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 12 — known_external_ids hint skips detail fetches
+# 12 — known_external_ids hint does not suppress detail refreshes
 # ---------------------------------------------------------------------------
 
 
@@ -504,7 +504,7 @@ def _five_row_listing() -> str:
     )
 
 
-async def test_fetch_skips_detail_for_known_ids() -> None:
+async def test_fetch_ignores_known_ids_and_fetches_all_details() -> None:
     listing = _five_row_listing()
     detail_html = _build_detail_html()
     captured: list[httpx.Request] = []
@@ -524,11 +524,17 @@ async def test_fetch_skips_detail_for_known_ids() -> None:
     listing_calls = [r for r in captured if _is_listing(r)]
     detail_calls = [r for r in captured if _is_detail(r)]
     assert len(listing_calls) == 1
-    # Only the two not-yet-seen IDs were fetched on detail.
+    # Known IDs must still fetch detail so existing rows can be
+    # refreshed and rematched after keyword/source parser changes.
     fetched_ids = sorted(_detail_id(r) for r in detail_calls)
-    assert fetched_ids == ["4", "5"]
-    # And the result carries those two normalized tenders.
-    assert {t.external_id for t in result.tenders} == {"4", "5"}
+    assert fetched_ids == ["1", "2", "3", "4", "5"]
+    assert {t.external_id for t in result.tenders} == {
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+    }
 
 
 async def test_fetch_no_known_ids_fetches_all() -> None:
@@ -578,7 +584,7 @@ async def test_fetch_empty_known_ids_fetches_all() -> None:
     assert len(result.tenders) == 5
 
 
-async def test_fetch_logs_skip_summary(
+async def test_fetch_known_ids_does_not_log_skip_summary(
     captured_logs: list[dict[str, object]],
 ) -> None:
     listing = _five_row_listing()
@@ -600,8 +606,4 @@ async def test_fetch_logs_skip_summary(
         for log in captured_logs
         if log.get("event") == "national_bank.detail_skipped_known"
     ]
-    assert len(skip_events) == 1
-    event = skip_events[0]
-    assert event.get("skipped") == 3
-    assert event.get("fetched") == 2
-    assert event.get("listing_total") == 5
+    assert skip_events == []

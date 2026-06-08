@@ -254,9 +254,9 @@ async def test_fetch_latest_paginates_until_since() -> None:
     )
 
     listing_calls = [r for r in captured if _is_listing(r)]
-    assert len(listing_calls) == 1
-    offset_param = listing_calls[0].url.params.get("offset")
-    assert offset_param in (None, "0")
+    assert len(listing_calls) == 2
+    offsets = [r.url.params.get("offset") for r in listing_calls]
+    assert offsets == ["0", "50"]
 
     # Only the 'new' lots survive the since cutoff; both share announcement 1001.
     assert {t.external_id for t in result.tenders} == {"1001"}

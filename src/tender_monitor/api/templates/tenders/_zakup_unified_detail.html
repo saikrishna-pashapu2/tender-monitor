@@ -1,0 +1,252 @@
+<section class="space-y-5">
+  <section class="overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm shadow-slate-200/70">
+    <div class="border-b border-slate-300 bg-gradient-to-r from-emerald-950 via-teal-900 to-slate-900 px-5 py-5 text-white sm:px-6">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div class="min-w-0">
+          <div class="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-100">Unified Procurement Portal of Kazakhstan</div>
+          <h2 class="mt-2 text-xl font-semibold">
+            Объявление № {{ zakup_unified_view.announcement_number or tender.external_id }}
+          </h2>
+          <p class="mt-2 max-w-5xl text-sm text-emerald-50">
+            {{ zakup_unified_view.title or tender.title }}
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          {% if zakup_unified_view.status %}
+            <span class="inline-flex items-center rounded-md border border-white/20 bg-white/10 px-3 py-2 text-sm font-medium text-white">
+              {{ zakup_unified_view.status }}
+            </span>
+          {% endif %}
+          <a href="{{ tender.source_url }}"
+             target="_blank"
+             rel="noopener"
+             class="inline-flex items-center gap-2 rounded-md bg-white px-4 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-50">
+            <i data-lucide="external-link" class="h-4 w-4"></i>
+            Открыть на zakup.gov.kz
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4 sm:p-6">
+      <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Способ закупки</div>
+        <div class="mt-2 text-base font-semibold text-slate-950">{{ zakup_unified_view.purchase_method or "—" }}</div>
+      </div>
+      <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Предмет</div>
+        <div class="mt-2 text-base font-semibold text-slate-950">{{ zakup_unified_view.purchase_subject or "—" }}</div>
+      </div>
+      <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Лоты</div>
+        <div class="mt-2 font-mono text-lg font-semibold text-slate-950">{{ zakup_unified_view.lot_count }}</div>
+      </div>
+      <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Сумма</div>
+        {% if tender.value_amount is not none %}
+          <div class="mt-2 text-lg font-semibold text-slate-950">{{ tender.value_amount|pretty_amount(tender.value_currency) }}</div>
+          {% set usd_value = tender.value_amount|amount_in_usd(tender.value_currency) %}
+          {% if usd_value is not none and (tender.value_currency or '').upper() != 'USD' %}
+            <div class="mt-1 text-base font-semibold text-slate-950">{{ usd_value|pretty_amount("USD") }}</div>
+          {% endif %}
+        {% else %}
+          <div class="mt-2 text-lg font-semibold text-slate-400">—</div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm shadow-slate-200/70" data-tab-scope>
+    <div class="border-b border-slate-300 bg-white px-5 pt-4 sm:px-6">
+      <div class="flex flex-wrap gap-1" data-tab-group="zakup-unified-main">
+        <button type="button"
+                data-tab-target="zakup-unified-announcement"
+                class="rounded-t-md border border-slate-300 bg-blue-900 px-4 py-2.5 text-sm font-medium text-white">
+          Объявление
+        </button>
+        <button type="button"
+                data-tab-target="zakup-unified-lots"
+                class="rounded-t-md border border-slate-300 bg-slate-900 px-4 py-2.5 text-sm font-medium text-white">
+          Лоты
+        </button>
+        <button type="button"
+                data-tab-target="zakup-unified-organizer"
+                class="rounded-t-md border border-slate-300 bg-slate-900 px-4 py-2.5 text-sm font-medium text-white">
+          Организатор
+        </button>
+        <button type="button"
+                data-tab-target="zakup-unified-api"
+                class="rounded-t-md border border-slate-300 bg-slate-900 px-4 py-2.5 text-sm font-medium text-white">
+          API payload
+        </button>
+      </div>
+    </div>
+
+    <div class="p-5 sm:p-6">
+      <div data-tab-panel="zakup-unified-announcement">
+        <div class="grid gap-5 xl:grid-cols-2">
+          <section>
+            <h3 class="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Данные объявления</h3>
+            <div class="overflow-hidden rounded-lg border border-slate-200">
+              <table class="min-w-full text-sm">
+                <tbody class="divide-y divide-slate-200">
+                  {% for row in zakup_unified_view.announcement_rows %}
+                    <tr class="align-top">
+                      <th class="w-1/3 bg-slate-50 px-4 py-3 text-left font-medium text-slate-600">{{ row.label }}</th>
+                      <td class="px-4 py-3 text-slate-950">{{ row.value|pretty_scalar }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section>
+            <h3 class="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Процедура</h3>
+            <div class="overflow-hidden rounded-lg border border-slate-200">
+              <table class="min-w-full text-sm">
+                <tbody class="divide-y divide-slate-200">
+                  {% for row in zakup_unified_view.procurement_rows %}
+                    <tr class="align-top">
+                      <th class="w-1/3 bg-slate-50 px-4 py-3 text-left font-medium text-slate-600">{{ row.label }}</th>
+                      <td class="px-4 py-3 text-slate-950">{{ row.value|pretty_scalar }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <div class="mt-5 grid gap-4 md:grid-cols-2">
+          <div class="rounded-lg border border-emerald-100 bg-emerald-50/70 p-4">
+            <div class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Опубликовано</div>
+            <div class="mt-2 text-base font-semibold text-slate-950">{{ tender.published_at|pretty_scalar if tender.published_at else "—" }}</div>
+          </div>
+          <div class="rounded-lg border border-red-100 bg-red-50/60 p-4">
+            <div class="text-xs font-semibold uppercase tracking-[0.18em] text-red-700">Окончание приема</div>
+            <div class="mt-2 text-base font-semibold text-slate-950">{{ tender.deadline_at|pretty_scalar if tender.deadline_at else "—" }}</div>
+            {% set deadline = tender.deadline_at|deadline_state %}
+            <div class="mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-medium
+                        {% if deadline.color == 'past' %}bg-slate-200 text-slate-500{% else %}bg-{{ deadline.color }}-100 text-{{ deadline.color }}-800{% endif %}">
+              {{ deadline.label }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-tab-panel="zakup-unified-lots" class="hidden">
+        {% if zakup_unified_view.lots %}
+          <div class="overflow-x-auto rounded-lg border border-slate-200">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-900 text-white">
+                <tr>
+                  <th class="px-4 py-3 text-left font-medium">№</th>
+                  <th class="px-4 py-3 text-left font-medium">Лот</th>
+                  <th class="px-4 py-3 text-left font-medium">ЕНСТРУ</th>
+                  <th class="px-4 py-3 text-left font-medium">Количество</th>
+                  <th class="px-4 py-3 text-left font-medium">Сумма</th>
+                  <th class="px-4 py-3 text-left font-medium">Поставка</th>
+                  <th class="px-4 py-3 text-left font-medium">Система</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200 bg-white">
+                {% for lot in zakup_unified_view.lots %}
+                  <tr class="align-top">
+                    <td class="px-4 py-3 text-slate-600">
+                      <div class="font-mono">{{ lot.get("lot_number") or loop.index }}</div>
+                      {% if lot.get("announcement_number") %}
+                        <div class="mt-1 text-xs text-slate-400">{{ lot.get("announcement_number") }}</div>
+                      {% endif %}
+                    </td>
+                    <td class="max-w-md px-4 py-3">
+                      <div class="font-semibold text-slate-950">{{ lot.get("title") or zakup_unified_view.title or "—" }}</div>
+                      {% if lot.get("description") %}
+                        <div class="mt-1 text-sm text-slate-600">{{ lot.get("description") }}</div>
+                      {% endif %}
+                      {% if lot.get("organization_name") %}
+                        <div class="mt-2 text-xs text-slate-500">{{ lot.get("organization_name") }}</div>
+                      {% endif %}
+                    </td>
+                    <td class="max-w-sm px-4 py-3 text-slate-700">
+                      {% if lot.get("enstrus") %}
+                        <div class="space-y-2">
+                          {% for enstru in lot.get("enstrus") %}
+                            <div>
+                              {% if enstru.get("code") %}
+                                <span class="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-600">{{ enstru.get("code") }}</span>
+                              {% endif %}
+                              <div class="mt-1 text-xs text-slate-600">{{ enstru.get("name") or "—" }}</div>
+                            </div>
+                          {% endfor %}
+                        </div>
+                      {% else %}
+                        —
+                      {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-slate-700">{{ lot.get("quantity")|pretty_scalar }}</td>
+                    <td class="px-4 py-3 font-semibold text-slate-950">
+                      {% if lot.get("total_price") is not none %}
+                        {{ lot.get("total_price")|pretty_amount("KZT") }}
+                        {% set lot_usd = lot.get("total_price")|amount_in_usd("KZT") %}
+                        {% if lot_usd is not none %}
+                          <div class="mt-1 text-sm font-semibold text-slate-950">{{ lot_usd|pretty_amount("USD") }}</div>
+                        {% endif %}
+                      {% else %}
+                        —
+                      {% endif %}
+                    </td>
+                    <td class="max-w-sm px-4 py-3 text-slate-700">
+                      {% if lot.get("delivery_addresses") %}
+                        <ul class="space-y-1">
+                          {% for address in lot.get("delivery_addresses") %}
+                            <li>{{ address.get("name_ru") or address.get("name") or "—" }}</li>
+                          {% endfor %}
+                        </ul>
+                      {% else %}
+                        —
+                      {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-slate-700">
+                      <div>{{ lot.get("system") or "—" }}</div>
+                      {% if lot.get("status") %}
+                        <div class="mt-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">{{ lot.get("status") }}</div>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="text-sm text-slate-500">No lots were extracted for this unified procurement announcement.</p>
+        {% endif %}
+      </div>
+
+      <div data-tab-panel="zakup-unified-organizer" class="hidden">
+        <div class="overflow-hidden rounded-lg border border-slate-200">
+          <table class="min-w-full text-sm">
+            <tbody class="divide-y divide-slate-200">
+              {% for row in zakup_unified_view.organizer_rows %}
+                <tr class="align-top">
+                  <th class="w-1/3 bg-slate-50 px-4 py-3 text-left font-medium text-slate-600">{{ row.label }}</th>
+                  <td class="px-4 py-3 text-slate-950">{{ row.value|pretty_scalar }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div data-tab-panel="zakup-unified-api" class="hidden">
+        <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div class="mb-3 flex flex-wrap gap-2 text-xs">
+            <span class="rounded-full bg-white px-3 py-1 font-medium text-slate-600">JSON API source</span>
+            <span class="rounded-full bg-white px-3 py-1 font-medium text-slate-600">{{ zakup_unified_view.lots|length }} grouped lots</span>
+          </div>
+          <pre class="overflow-x-auto rounded-lg bg-slate-950 p-4 text-xs leading-6 text-slate-100">{{ tender.raw_json|pretty_json }}</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+</section>

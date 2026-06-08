@@ -26,14 +26,19 @@ from tender_monitor.connectors.http import make_client
 from tender_monitor.connectors.xt_xarid import (
     STATUS_MAPPING,
     XtXaridConnector,
+    _build_lots,
     _build_title,
     _parse_iso_maybe,
     map_status,
 )
 from tender_monitor.core.enums import Country, Language, TenderStatus
+from tender_monitor.matching import KeywordsConfig, match_tender
 
 RPC_PATH = "/rpc"
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "xt_xarid"
+KEYWORDS_PATH = (
+    Path(__file__).parent.parent.parent / "config" / "keywords.yaml"
+)
 
 
 def _read_fixture() -> dict[str, Any]:
@@ -114,6 +119,29 @@ def test_build_title_no_good_maps_raises() -> None:
         )
 
 
+def test_build_lots_dedupes_good_maps_and_keeps_fields() -> None:
+    raw = _fixture_items()[0]
+    lots = _build_lots(raw, _build_title(raw))
+
+    assert len(lots) == 1
+    assert lots[0]["name_ru"] == "Услуги по аутсорсингу приготовления еды"
+    assert "lot_id" in lots[0]
+    assert "quantity" in lots[0]
+    assert "unit_price" in lots[0]
+    assert "total_amount" in lots[0]
+
+
+def test_build_lots_keeps_distinct_line_items() -> None:
+    raw = _fixture_items()[2]
+    lots = _build_lots(raw, _build_title(raw))
+
+    names = {lot["name_ru"] for lot in lots}
+    assert names == {
+        "Поставка медицинского оборудования",
+        "Расходные материалы для лабораторий",
+    }
+
+
 # ---------------------------------------------------------------------------
 # _parse_iso_maybe / map_status
 # ---------------------------------------------------------------------------
@@ -168,10 +196,11 @@ def test_normalize_happy_path() -> None:
     assert upsert.status is TenderStatus.announced
     assert upsert.source_url == "https://xt-xarid.uz/procedure/tender/7393512"
     assert upsert.language is Language.uz
-    # Synthetic _lots is populated for the matcher.
+    # Distinct good_maps rows are projected into _lots for the matcher.
     lots = upsert.raw_json["_lots"]
     assert len(lots) == 1
     assert lots[0]["name_ru"] == upsert.title
+    assert "quantity" in lots[0]
 
 
 def test_normalize_missing_title_raises() -> None:
@@ -194,6 +223,36 @@ def test_normalize_multi_lot_title_joins_distinct_names() -> None:
     assert " | " in upsert.title
     assert "Поставка медицинского оборудования" in upsert.title
     assert "Расходные материалы для лабораторий" in upsert.title
+    assert len(upsert.raw_json["_lots"]) == 2
+
+
+def test_normalize_good_maps_description_matches_keyword_filter() -> None:
+    raw = copy.deepcopy(_fixture_items()[0])
+    raw["id"] = 7777777
+    raw["meta"]["good_maps"] = [
+        {
+            "lot_id": 1,
+            "id": 100,
+            "name": "General consulting services",
+            "description": "ESG reporting and sustainability report preparation",
+            "amount": 1,
+            "unit": "service",
+            "price": 1000,
+            "totalcost_item": 1000,
+        }
+    ]
+    upsert = XtXaridConnector()._normalize(raw)
+
+    assert upsert.title == "General consulting services"
+    assert (
+        upsert.raw_json["_lots"][0]["description_ru"]
+        == "ESG reporting and sustainability report preparation"
+    )
+
+    config = KeywordsConfig.load(KEYWORDS_PATH)
+    result = match_tender(upsert, config)
+    assert result.is_match
+    assert "esg" in result.matched_groups
 
 
 def test_normalize_handles_null_cost() -> None:

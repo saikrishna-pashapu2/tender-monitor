@@ -25,6 +25,8 @@ from tender_monitor.connectors.uzbekistan_tenders import (
     _extract_cards,
     _has_next_page,
     _parse_card,
+    _parse_detail_date,
+    _parse_detail_page,
     parse_value_text,
 )
 from tender_monitor.core.enums import Country, Language, TenderStatus
@@ -72,6 +74,40 @@ def _credit_rating_card() -> dict[str, str]:
     )
 
 
+def _detail_html(
+    *,
+    description: str = "Tender for ESG reporting and sustainability report services",
+    identifier: str = "333",
+    starts: str = "2026-05-18",
+    ends: str = "2026-05-19",
+    buyer: str = "National Road Agency",
+) -> str:
+    return f"""
+    <html>
+      <head>
+        <meta name="description" content="{description}, Ref Id: {identifier}">
+        <script type="application/ld+json">
+        {{
+          "@context": "https://schema.org",
+          "@type": "Offer",
+          "description": "{description}",
+          "identifier": "{identifier}",
+          "availabilityStarts": "{starts}",
+          "availabilityEnds": "{ends}",
+          "price": "1500",
+          "priceCurrency": "USD",
+          "offeredBy": {{
+            "@type": "Organization",
+            "name": "{buyer}"
+          }}
+        }}
+        </script>
+      </head>
+      <body></body>
+    </html>
+    """
+
+
 # ---------------------------------------------------------------------------
 # Date parser
 # ---------------------------------------------------------------------------
@@ -98,6 +134,12 @@ def test_parse_full_month_date_handles_empty(text: str | None) -> None:
 @pytest.mark.parametrize("text", ["not-a-date", "30-May-2026", "2026-05-30"])
 def test_parse_full_month_date_handles_garbage(text: str) -> None:
     assert parse_full_month_date(text) is None
+
+
+def test_parse_detail_date_accepts_iso_date() -> None:
+    assert _parse_detail_date("2026-05-18") == datetime(
+        2026, 5, 18, 0, 0, 0, tzinfo=UTC
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +261,27 @@ def test_has_next_page_false_when_next_missing() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Detail parser
+# ---------------------------------------------------------------------------
+
+
+def test_parse_detail_page_extracts_jsonld_offer() -> None:
+    parsed = _parse_detail_page(_detail_html())
+
+    assert (
+        parsed["detail_description"]
+        == "Tender for ESG reporting and sustainability report services"
+    )
+    assert parsed["detail_identifier"] == "333"
+    assert parsed["published_text_detail"] == "2026-05-18"
+    assert parsed["deadline_text_detail"] == "2026-05-19"
+    assert parsed["buyer_name_detail"] == "National Road Agency"
+    assert parsed["detail_price"] == "1500"
+    assert parsed["detail_price_currency"] == "USD"
+    assert parsed["detail_meta_description"].startswith("Tender for ESG")
+
+
+# ---------------------------------------------------------------------------
 # Normalization
 # ---------------------------------------------------------------------------
 
@@ -258,6 +321,31 @@ def test_normalize_credit_rating_card_matches_keyword_filter() -> None:
     assert any(
         phrase.lower() == "credit rating" for phrase in cr["matched_phrases"]
     )
+
+
+def test_normalize_detail_description_matches_keyword_filter() -> None:
+    raw = {
+        "external_id": "333",
+        "title": "Provision of consulting services",
+        "detail_url": "https://www.uzbekistantenders.com/tender/esg.php",
+        "deadline_text": "19 May 2026",
+        "value_text": "Refer Document",
+        **_parse_detail_page(_detail_html()),
+    }
+    upsert = UzbekistanTendersConnector()._normalize(raw)
+
+    assert upsert.buyer_name == "National Road Agency"
+    assert upsert.published_at == datetime(2026, 5, 18, 0, 0, 0, tzinfo=UTC)
+    assert upsert.deadline_at == datetime(2026, 5, 19, 0, 0, 0, tzinfo=UTC)
+    assert (
+        upsert.raw_json["_lots"][0]["description_en"]
+        == "Tender for ESG reporting and sustainability report services"
+    )
+
+    config = KeywordsConfig.load(KEYWORDS_PATH)
+    result = match_tender(upsert, config)
+    assert result.is_match
+    assert "esg" in result.matched_groups
 
 
 def test_normalize_empty_title_raises() -> None:
@@ -319,6 +407,53 @@ async def test_fetch_latest_full_pipeline() -> None:
     # The fixture advertises a next page, so we probe page 2 before stopping.
     listing_calls = [r for r in captured if _is_listing(r)]
     assert [r.url.path for r in listing_calls] == [LISTING_PATH, f"{LISTING_PATH}/2"]
+
+
+async def test_fetch_latest_enriches_detail_description_for_matching() -> None:
+    synthetic_html = """
+    <html><body><div id="tenderlisting">
+      <div class="tender-card">
+        <a href="https://www.uzbekistantenders.com/tender/esg.php">
+          <p class="tender-card-heading">Provision of consulting services</p>
+        </a>
+        <div class="row tender-card-content">
+          <div><p>UZT Ref No.: 333</p></div>
+          <div><p>Deadline: 19 May 2026</p></div>
+          <div>Tender Value: Refer Document</div>
+          <div><a class="Viewbutton" href="https://www.uzbekistantenders.com/tender/esg.php">View Details</a></div>
+        </div>
+      </div>
+    </div></body></html>
+    """
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        if request.url.path == LISTING_PATH:
+            return httpx.Response(200, html=synthetic_html)
+        if request.url.path == "/tender/esg.php":
+            return httpx.Response(200, html=_detail_html())
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    connector = UzbekistanTendersConnector(
+        http_client_factory=_client_factory(transport)
+    )
+
+    result = await connector.fetch_latest()
+
+    assert len(result.tenders) == 1
+    tender = result.tenders[0]
+    assert tender.buyer_name == "National Road Agency"
+    assert tender.raw_json["_lots"][0]["description_en"].startswith(
+        "Tender for ESG reporting"
+    )
+    assert [r.url.path for r in captured] == [LISTING_PATH, "/tender/esg.php"]
+
+    config = KeywordsConfig.load(KEYWORDS_PATH)
+    match = match_tender(tender, config)
+    assert match.is_match
+    assert "esg" in match.matched_groups
 
 
 async def test_fetch_latest_500_raises_fetch_error() -> None:
@@ -448,4 +583,8 @@ async def test_fetch_latest_paginates_and_dedupes_ids() -> None:
     result = await connector.fetch_latest()
 
     assert {t.external_id for t in result.tenders} == {"111", "222"}
-    assert [r.url.path for r in captured] == [LISTING_PATH, f"{LISTING_PATH}/2"]
+    listing_calls = [r for r in captured if _is_listing(r)]
+    assert [r.url.path for r in listing_calls] == [
+        LISTING_PATH,
+        f"{LISTING_PATH}/2",
+    ]

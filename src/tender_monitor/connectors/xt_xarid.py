@@ -146,6 +146,69 @@ def _build_title(raw: dict[str, Any]) -> str:
     return " | ".join(titles)
 
 
+def _string_or_none(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def _build_lots(raw: dict[str, Any], title: str) -> list[dict[str, Any]]:
+    """Expose match-worthy ``good_maps`` text through ``raw_json["_lots"]``.
+
+    The source's full payload is still stored unchanged in ``raw_json``.
+    This projection exists so the generic matcher and detail UI can
+    inspect each distinct line-item name/description without knowing
+    XT-Xarid's nested ``meta.good_maps`` shape.
+    """
+    raw_meta = raw.get("meta")
+    meta = raw_meta if isinstance(raw_meta, dict) else {}
+    good_maps = meta.get("good_maps")
+    if not isinstance(good_maps, list):
+        good_maps = []
+
+    lots: list[dict[str, Any]] = []
+    seen: set[tuple[str, str | None]] = set()
+    for gm in good_maps:
+        if not isinstance(gm, dict):
+            continue
+        name = _string_or_none(gm.get("name"))
+        description = (
+            _string_or_none(gm.get("description"))
+            or _string_or_none(gm.get("description_ru"))
+            or _string_or_none(gm.get("technical_description"))
+            or _string_or_none(gm.get("characteristic"))
+        )
+        if name is None:
+            continue
+        key = (name.casefold(), description.casefold() if description else None)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        lot: dict[str, Any] = {
+            "name_ru": name,
+            "description_ru": description,
+        }
+        optional_fields = {
+            "lot_id": "lot_id",
+            "id": "classification_code",
+            "amount": "quantity",
+            "unit": "unit",
+            "price": "unit_price",
+            "totalcost_item": "total_amount",
+        }
+        for source_key, target_key in optional_fields.items():
+            value = gm.get(source_key)
+            if value not in (None, ""):
+                lot[target_key] = value
+        lots.append(lot)
+
+    if lots:
+        return lots
+    return [{"name_ru": title, "description_ru": None}]
+
+
 @register
 class XtXaridConnector(Connector):
     source_name: ClassVar[str] = "xt_xarid"
@@ -336,12 +399,7 @@ class XtXaridConnector(Connector):
         language = Language.uz if lang_value.startswith("uz") else Language.ru
 
         raw_json: dict[str, Any] = dict(raw)
-        raw_json["_lots"] = [
-            {
-                "name_ru": title,
-                "description_ru": None,
-            }
-        ]
+        raw_json["_lots"] = _build_lots(raw, title)
 
         return TenderUpsert(
             source_name=self.source_name,
@@ -365,6 +423,7 @@ class XtXaridConnector(Connector):
 __all__ = [
     "STATUS_MAPPING",
     "XtXaridConnector",
+    "_build_lots",
     "_build_title",
     "_parse_iso_maybe",
     "map_status",

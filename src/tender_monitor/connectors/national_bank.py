@@ -521,29 +521,15 @@ class NationalBankConnector(Connector):
                 rows_collected=len(listing_rows),
             )
 
-            # Hint from the scheduler: tenders we've already processed
-            # recently. Skip the per-lot detail fetch for those -- the
-            # listing row alone tells us nothing has changed worth a
-            # round trip. None / empty set = no hint, fall through to
-            # the normal fetch-everything path. Tradeoff: skipped rows'
-            # last_seen_at does NOT advance this cycle (flagged in
-            # CLAUDE.md under "Scheduler and ingestion" as a known
-            # follow-up).
-            known = self._known_external_ids or set()
-
             result: list[dict[str, Any]] = []
             consecutive_old = 0
             stopped_on_since = False
-            skipped_count = 0
             for row in listing_rows:
                 external_id = row.get("data_key") or ""
                 if not external_id:
                     logger.warning(
                         "national_bank.listing_row_missing_data_key", row=row
                     )
-                    continue
-                if external_id in known:
-                    skipped_count += 1
                     continue
                 detail = await self._fetch_lot_detail(client, external_id)
                 if detail is None:
@@ -565,14 +551,6 @@ class NationalBankConnector(Connector):
                     continue
                 consecutive_old = 0
                 result.append(merged)
-
-            if skipped_count > 0:
-                logger.info(
-                    "national_bank.detail_skipped_known",
-                    skipped=skipped_count,
-                    fetched=len(result),
-                    listing_total=len(listing_rows),
-                )
 
             logger.info(
                 "national_bank.fetch_complete",

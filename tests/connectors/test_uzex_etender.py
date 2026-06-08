@@ -142,11 +142,13 @@ def test_normalize_missing_name_raises() -> None:
     items = _read_fixture()
     bad = copy.deepcopy(items[0])
     bad["name"] = ""
+    bad["category_name"] = ""
     with pytest.raises(ParseError, match="empty name"):
         UzexEtenderConnector()._normalize(bad)
 
     bad2 = copy.deepcopy(items[0])
     bad2["name"] = None
+    bad2["category_name"] = None
     with pytest.raises(ParseError, match="empty name"):
         UzexEtenderConnector()._normalize(bad2)
 
@@ -293,7 +295,11 @@ async def test_fetch_latest_pagination() -> None:
 
     result = await connector.fetch_latest()
 
-    listing_calls = [r for r in captured if _is_active_listing(r)]
+    listing_calls = [
+        r
+        for r in captured
+        if _is_active_listing(r) and _body_json(r).get("TypeId") == 1
+    ]
     # Page 2 was a short page (30 < 50), so the connector breaks
     # before requesting page 3. Two POSTs total.
     assert len(listing_calls) == 2
@@ -350,7 +356,9 @@ async def test_fetch_latest_since_filter_after_pagination() -> None:
     old_template = copy.deepcopy(_read_fixture()[0])
     new_template = copy.deepcopy(_read_fixture()[0])
     old_template["start_date"] = "2026-04-01T10:00:00"  # < since
+    old_template["end_date"] = "2026-04-02T10:00:00"  # < since
     new_template["start_date"] = "2026-06-01T10:00:00"  # > since
+    new_template["end_date"] = "2026-06-02T10:00:00"  # > since
 
     page1 = []
     for i in range(50):
@@ -446,12 +454,15 @@ async def test_fetch_latest_fetches_detail_only_for_in_window_items() -> None:
     old_item = copy.deepcopy(template)
     old_item["id"] = 600001
     old_item["start_date"] = "2026-04-01T10:00:00"
+    old_item["end_date"] = "2026-04-02T10:00:00"
 
     new_item = copy.deepcopy(template)
     new_item["id"] = 600002
     new_item["start_date"] = "2026-06-01T10:00:00"
+    new_item["end_date"] = "2026-06-02T10:00:00"
 
     detail = _read_detail_fixture("detail_484751.json")
+    detail["id"] = 600002
     captured: list[httpx.Request] = []
     handler = _make_handler(
         pages=[[old_item, new_item]],
@@ -474,6 +485,7 @@ async def test_fetch_latest_includes_recent_not_dealed_items() -> None:
     active_item = copy.deepcopy(_read_fixture()[0])
     active_item["id"] = 700001
     active_item["start_date"] = "2026-05-20T10:00:00"
+    active_item["end_date"] = "2026-05-22T10:00:00"
 
     failed_item = {
         "trade_id": 700002,
@@ -488,13 +500,16 @@ async def test_fetch_latest_includes_recent_not_dealed_items() -> None:
         "status_name": "Торг не состоялся",
     }
 
-    detail = _read_detail_fixture("detail_482604.json")
+    active_detail = _read_detail_fixture("detail_482604.json")
+    active_detail["id"] = 700001
+    failed_detail = copy.deepcopy(active_detail)
+    failed_detail["id"] = 700002
     captured: list[httpx.Request] = []
     handler = _make_handler(
         pages=[[active_item]],
         not_dealed_pages=[[failed_item]],
         captured=captured,
-        details_by_id={700001: detail, 700002: detail},
+        details_by_id={700001: active_detail, 700002: failed_detail},
     )
     transport = httpx.MockTransport(handler)
     connector = UzexEtenderConnector(http_client_factory=_client_factory(transport))
