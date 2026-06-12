@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar
 from unittest.mock import patch
@@ -21,6 +21,7 @@ from tender_monitor.scheduler.ingest import (
     ingest_source,
     reset_keywords_cache,
 )
+from tender_monitor.translation import TitleTranslation, TranslationError
 
 T0 = datetime(2026, 5, 8, 12, 0, tzinfo=UTC)
 SOURCE_NAME = "_fake_ingest"
@@ -79,12 +80,42 @@ class _FakeConnector(Connector):
         return type(self).tenders[index]
 
 
+class _FakeTitleTranslator:
+    provider = "fake_translate"
+
+    def __init__(self, translations: dict[str, str]) -> None:
+        self.translations = translations
+        self.calls: list[list[str]] = []
+
+    async def translate_titles(
+        self, texts: Sequence[str], *, source_language: str = "auto"
+    ) -> list[TitleTranslation]:
+        self.calls.append(list(texts))
+        return [
+            TitleTranslation(
+                text=self.translations[text],
+                detected_language="ru",
+            )
+            for text in texts
+        ]
+
+
+class _FailingTitleTranslator:
+    provider = "fake_translate"
+
+    async def translate_titles(
+        self, texts: Sequence[str], *, source_language: str = "auto"
+    ) -> list[TitleTranslation]:
+        raise TranslationError(f"failed for {len(texts)} title(s)")
+
+
 @pytest.fixture(autouse=True)
 def _register_fake_connector(fresh_registry: None) -> Iterator[None]:
     """Register the FakeConnector and ensure the keywords cache is cold."""
     register(_FakeConnector)
     reset_keywords_cache()
-    yield
+    with patch("tender_monitor.scheduler.ingest.build_title_translator", return_value=None):
+        yield
     reset_keywords_cache()
 
 
@@ -240,6 +271,96 @@ async def test_ingest_matcher_exception_does_not_lose_tender(
         for row in rows:
             assert row.matched_groups == []
             assert row.match_details is None
+
+
+async def test_ingest_translates_title_before_matching_and_saving(
+    scheduler_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await _make_source(scheduler_session_factory)
+    _FakeConnector.reset(tenders=[_fake_upsert("F-1", title="Plain procurement")])
+    translator = _FakeTitleTranslator(
+        {"Plain procurement": "ESG audit and climate risk services"}
+    )
+
+    result = await ingest_source(
+        SOURCE_NAME,
+        session_factory=scheduler_session_factory,
+        now=_frozen_now(T0),
+        title_translator=translator,
+    )
+
+    assert result.created == 1
+    assert result.matched == 1
+    assert translator.calls == [["Plain procurement"]]
+
+    async with scheduler_session_factory() as session:
+        row = (await session.execute(select(Tender))).scalar_one()
+        assert row.title == "Plain procurement"
+        assert row.title_en == "ESG audit and climate risk services"
+        assert row.title_language == "ru"
+        assert row.translation_provider == "fake_translate"
+        assert row.title_translated_at == T0
+        assert row.matched_groups == ["esg"]
+
+
+async def test_ingest_reuses_stored_translation_for_unchanged_title(
+    scheduler_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await _make_source(scheduler_session_factory)
+    title = "Plain procurement"
+    _FakeConnector.reset(tenders=[_fake_upsert("F-1", title=title)])
+    first_translator = _FakeTitleTranslator(
+        {title: "ESG audit and climate risk services"}
+    )
+    await ingest_source(
+        SOURCE_NAME,
+        session_factory=scheduler_session_factory,
+        now=_frozen_now(T0),
+        title_translator=first_translator,
+    )
+
+    second_translator = _FakeTitleTranslator(
+        {title: "Different translation that should not be used"}
+    )
+    _FakeConnector.reset(tenders=[_fake_upsert("F-1", title=title)])
+    result = await ingest_source(
+        SOURCE_NAME,
+        session_factory=scheduler_session_factory,
+        now=_frozen_now(T0 + timedelta(hours=1)),
+        title_translator=second_translator,
+    )
+
+    assert result.unchanged == 1
+    assert result.matched == 1
+    assert second_translator.calls == []
+
+    async with scheduler_session_factory() as session:
+        row = (await session.execute(select(Tender))).scalar_one()
+        assert row.title_en == "ESG audit and climate risk services"
+        assert row.title_translated_at == T0
+
+
+async def test_ingest_translation_failure_saves_tender_without_match(
+    scheduler_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await _make_source(scheduler_session_factory)
+    _FakeConnector.reset(tenders=[_fake_upsert("F-1", title="Plain procurement")])
+
+    result = await ingest_source(
+        SOURCE_NAME,
+        session_factory=scheduler_session_factory,
+        now=_frozen_now(T0),
+        title_translator=_FailingTitleTranslator(),
+    )
+
+    assert result.created == 1
+    assert result.matched == 0
+
+    async with scheduler_session_factory() as session:
+        row = (await session.execute(select(Tender))).scalar_one()
+        assert row.title == "Plain procurement"
+        assert row.title_en is None
+        assert row.matched_groups == []
 
 
 async def test_ingest_change_logged_at_info_level(

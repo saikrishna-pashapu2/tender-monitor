@@ -12,6 +12,7 @@ import click
 import truststore
 import yaml
 from pydantic import ValidationError
+from sqlalchemy import select
 
 # ets-tender.kz (and any future portal) sometimes serves a leaf cert
 # whose intermediate isn't in certifi's bundle. truststore routes
@@ -26,8 +27,17 @@ from tender_monitor.connectors import (  # noqa: E402  (must follow truststore i
     all_connectors,
     get_connector,
 )
+from tender_monitor.core.database import (  # noqa: E402
+    async_session_factory,
+    dispose_engine,
+)
 from tender_monitor.core.logging import configure_logging  # noqa: E402
-from tender_monitor.matching import KeywordsConfig  # noqa: E402
+from tender_monitor.core.models import Tender  # noqa: E402
+from tender_monitor.core.schemas import TenderUpsert  # noqa: E402
+from tender_monitor.matching import (  # noqa: E402
+    KeywordsConfig,
+    match_tender,
+)
 from tender_monitor.matching import match_text as run_match_text  # noqa: E402
 from tender_monitor.scheduler import Runner, ingest_source  # noqa: E402
 from tender_monitor.scheduler.seed import DEFAULT_PATH as DEFAULT_SOURCES_PATH  # noqa: E402
@@ -243,6 +253,118 @@ def validate_keywords_cmd(path: Path) -> None:
             f"{len(group.tokens)} tokens, "
             f"{len(group.exclude_if_contains)} excludes"
         )
+
+
+def _tender_to_upsert(row: Tender) -> TenderUpsert:
+    return TenderUpsert(
+        source_name=row.source_name,
+        external_id=row.external_id,
+        title=row.title,
+        title_en=row.title_en,
+        title_language=row.title_language,
+        translation_provider=row.translation_provider,
+        title_translated_at=row.title_translated_at,
+        buyer_name=row.buyer_name,
+        buyer_external_id=row.buyer_external_id,
+        country=row.country,
+        sector=row.sector,
+        value_amount=row.value_amount,
+        value_currency=row.value_currency,
+        published_at=row.published_at,
+        deadline_at=row.deadline_at,
+        status=row.status,
+        source_url=row.source_url,
+        language=row.language,
+        raw_json=row.raw_json,
+    )
+
+
+async def _rematch_existing(
+    *,
+    path: Path,
+    source_names: tuple[str, ...],
+    dry_run: bool,
+) -> dict[str, int]:
+    config = KeywordsConfig.load(path)
+    changed = 0
+    cleared = 0
+    matched = 0
+    total = 0
+
+    async with async_session_factory() as session:
+        stmt = select(Tender).order_by(Tender.source_name, Tender.external_id)
+        if source_names:
+            stmt = stmt.where(Tender.source_name.in_(source_names))
+
+        rows = (await session.execute(stmt)).scalars().all()
+        total = len(rows)
+        for row in rows:
+            previous_groups = list(row.matched_groups or [])
+            previous_details = row.match_details
+            result = match_tender(_tender_to_upsert(row), config)
+            match_details = result.match_details if result.match_details else None
+
+            if result.matched_groups:
+                matched += 1
+            if (
+                previous_groups != result.matched_groups
+                or previous_details != match_details
+            ):
+                changed += 1
+                if previous_groups and not result.matched_groups:
+                    cleared += 1
+                row.matched_groups = list(result.matched_groups)
+                row.match_details = match_details
+
+        if dry_run:
+            await session.rollback()
+        else:
+            await session.commit()
+
+    await dispose_engine()
+    return {
+        "total": total,
+        "matched": matched,
+        "changed": changed,
+        "cleared": cleared,
+    }
+
+
+@cli.command("rematch-existing")
+@click.option(
+    "--path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=DEFAULT_KEYWORDS_PATH,
+    show_default=True,
+    help="Path to the keywords YAML file.",
+)
+@click.option(
+    "--source",
+    "source_names",
+    multiple=True,
+    help="Restrict rematching to one source. Can be passed more than once.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Compute changes but roll them back.",
+)
+def rematch_existing_cmd(
+    path: Path,
+    source_names: tuple[str, ...],
+    dry_run: bool,
+) -> None:
+    """Recompute stored matches for tenders already in the database."""
+    result = asyncio.run(
+        _rematch_existing(path=path, source_names=source_names, dry_run=dry_run)
+    )
+    click.echo(
+        f"tenders={result['total']} "
+        f"matched={result['matched']} "
+        f"changed={result['changed']} "
+        f"cleared={result['cleared']} "
+        f"dry_run={str(dry_run).lower()}"
+    )
 
 
 @cli.command("seed-sources")

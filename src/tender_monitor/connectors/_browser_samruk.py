@@ -73,6 +73,16 @@ PAGINATION_OFFSET_KEYS = {
     "skip",
     "from",
 }
+LISTING_WRAPPER_KEYS = (
+    "content",
+    "data",
+    "items",
+    "result",
+    "rows",
+    "list",
+    "adverts",
+    "advertList",
+)
 
 
 def _path_of(url: str) -> str:
@@ -101,6 +111,49 @@ def _coerce_json_object(text: str | None) -> dict[str, Any] | None:
     except json.JSONDecodeError:
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _looks_like_listing_item(value: dict[str, Any]) -> bool:
+    return isinstance(value.get("id"), int) and any(
+        key in value
+        for key in (
+            "nameRu",
+            "number",
+            "acceptanceBeginDateTime",
+            "advertStatus",
+        )
+    )
+
+
+def _extract_listing_items(payload: Any) -> list[dict[str, Any]] | None:
+    """Return advert rows from common Samruk listing response shapes.
+
+    The portal has returned both a top-level list and wrapped payloads
+    such as ``{"content": [...]}`` / ``{"data": {"items": [...]}}``.
+    Treating only one shape as valid makes a harmless frontend/API tweak
+    look like a source outage.
+    """
+    if isinstance(payload, list):
+        if not payload:
+            return []
+        rows = [item for item in payload if isinstance(item, dict)]
+        return rows if any(_looks_like_listing_item(item) for item in rows) else None
+
+    if not isinstance(payload, dict):
+        return None
+
+    for key in LISTING_WRAPPER_KEYS:
+        if key not in payload:
+            continue
+        items = _extract_listing_items(payload[key])
+        if items is not None:
+            return items
+
+    for nested in payload.values():
+        items = _extract_listing_items(nested)
+        if items is not None:
+            return items
+    return None
 
 
 def _find_first_numeric(
@@ -287,11 +340,11 @@ class SamrukKazynaBrowser:
         finally:
             page.remove_listener("response", on_response)
 
-        listing = captures.get("listing")
-        if not isinstance(listing, list):
+        listing = _extract_listing_items(captures.get("listing"))
+        if listing is None:
             raise RuntimeError(
                 "samruk_kazyna browser: listing XHR not captured "
-                "or returned non-list payload"
+                "or returned unsupported payload"
             )
 
         aggregated = list(listing)
@@ -358,8 +411,8 @@ class SamrukKazynaBrowser:
                     page_number=page_number,
                 )
                 break
-            page_items = payload.get("data")
-            if payload.get("status") != 200 or not isinstance(page_items, list):
+            page_items = _extract_listing_items(payload.get("data"))
+            if payload.get("status") != 200 or page_items is None:
                 logger.warning(
                     "samruk_kazyna.browser.pagination_request_failed",
                     page_number=page_number,

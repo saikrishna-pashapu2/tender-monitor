@@ -103,6 +103,33 @@ def test_match_text_credit_rating_excluded(real_config: KeywordsConfig) -> None:
     assert "credit_rating" not in result.matched_groups
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Независимый рейтинг востребованности вузов РК",
+        "Участие в рейтингах услуги рейтингового агентства",
+        (
+            "Страхования ответственности членов Наблюдательного совета "
+            "Fitch milliy reyting"
+        ),
+        (
+            "Xodimlari uchun ixtiyoriy tibbiy sug'urta xizmati "
+            "milliy reyting"
+        ),
+        (
+            "Xorijiy qarz mablag'larini jalb qilish uchun yuridik xizmat "
+            "xalqaro reyting"
+        ),
+        "(2026 New Uzbek District) Micro-Industry Handicraft Service Centers",
+    ],
+)
+def test_credit_rating_pi_noise_does_not_match(
+    text: str, real_config: KeywordsConfig
+) -> None:
+    result = match_text(text, real_config)
+    assert "credit_rating" not in result.matched_groups
+
+
 # ---------------------------------------------------------------------------
 # match_text — token semantics
 # ---------------------------------------------------------------------------
@@ -161,6 +188,64 @@ def test_match_text_multiple_groups(real_config: KeywordsConfig) -> None:
     assert set(result.matched_groups) == {"esg", "credit_rating"}
 
 
+def test_match_text_keeps_core_corporate_governance_positive(
+    real_config: KeywordsConfig,
+) -> None:
+    result = match_text("Проведение оценки корпоративного управления", real_config)
+    assert "esg" in result.matched_groups
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Услуги по проведению энергетического аудита",
+        "Energy audit with issuance of an energy passport for a school",
+        (
+            "Обучающий семинар по теме Корпоративный секретарь "
+            "в системе корпоративного управления"
+        ),
+        (
+            "Услуги по техническому обслуживанию пожарной сигнализации "
+            "и проведению энергетического аудита"
+        ),
+        "Low Carbon steel shot for shot blasting machine",
+        "Respublika kardiologiya markazi uchun iqlim nazorat uskunalari",
+        "Kuzatuv kengashi a'zolarining javobgarligini sug'urta qilish",
+    ],
+)
+def test_esg_pi_noise_does_not_match(
+    text: str, real_config: KeywordsConfig
+) -> None:
+    result = match_text(text, real_config)
+    assert "esg" not in result.matched_groups
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Purchase of certification services for greenhouse gas emissions",
+        "Issiqxona gazlari emissiyalarini hisoblash va verifikatsiya qilish",
+        "Green finance and national assessment tool development",
+        "ESG rating and carbon footprint reduction services",
+    ],
+)
+def test_esg_high_signal_terms_still_match(
+    text: str, real_config: KeywordsConfig
+) -> None:
+    result = match_text(text, real_config)
+    assert "esg" in result.matched_groups
+
+
+def test_esg_training_with_explicit_esg_still_matches(
+    real_config: KeywordsConfig,
+) -> None:
+    result = match_text(
+        "Услуги по обучению персонала - Тренинг ESG: стратегия и отчетность",
+        real_config,
+    )
+    assert "esg" in result.matched_groups
+
+
 # ---------------------------------------------------------------------------
 # match_tender — searchable text construction
 # ---------------------------------------------------------------------------
@@ -191,6 +276,17 @@ def test_match_tender_uses_buyer_name(real_config: KeywordsConfig) -> None:
     )
     result = match_tender(tender, real_config)
     assert "credit_rating" in result.matched_groups
+
+
+def test_match_tender_uses_translated_title(real_config: KeywordsConfig) -> None:
+    tender = _make_tender(
+        title="Ordinary maintenance services",
+        raw_json={},
+    ).model_copy(update={"title_en": "ESG audit and climate risk review"})
+
+    result = match_tender(tender, real_config)
+
+    assert "esg" in result.matched_groups
 
 
 def test_match_tender_walks_nested_detail_payload(

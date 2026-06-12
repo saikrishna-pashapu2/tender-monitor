@@ -40,6 +40,14 @@ class Settings(BaseSettings):
     )
 
     anthropic_api_key: SecretStr | None = None
+    google_translate_pa_api_key: SecretStr | None = Field(
+        default=None,
+        description=(
+            "Browser Google translate-pa API key. If unset, title translation is disabled."
+        ),
+    )
+    translation_enabled: bool = True
+    translation_batch_size: int = Field(default=50, ge=1, le=100)
 
     # Public URL of the web UI; used to build links inside notification
     # emails. Override per environment (`https://tender.internal/…`).

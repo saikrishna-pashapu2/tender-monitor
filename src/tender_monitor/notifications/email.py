@@ -86,7 +86,7 @@ def render_email(*, tender: Any, app_base_url: str) -> EmailMessageContent:
     }
     html = env.get_template("tender_match.html").render(**context)
     text = env.get_template("tender_match.txt").render(**context)
-    title_snippet = (tender.title or "").strip()
+    title_snippet = (getattr(tender, "title_en", None) or tender.title or "").strip()
     if len(title_snippet) > 80:
         title_snippet = title_snippet[:77] + "…"
     groups = "+".join(tender.matched_groups or []) or "match"

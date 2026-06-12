@@ -40,17 +40,7 @@ groups:
       - "рейтинговое заключение"
       - "рейтингового заключения"
 
-      # --- Russian: rating agencies ---
-      - "рейтинговое агентство"
-      - "рейтингового агентства"
-      - "рейтинговому агентству"
-      - "рейтинговым агентством"
-      - "национальное рейтинговое агентство"
-      - "международное рейтинговое агентство"
-      - "международный рейтинг"
-      - "международного рейтинга"
-      - "национальный рейтинг"
-      - "национального рейтинга"
+      # --- Named rating agencies ---
       - "Эксперт РА"
       - "Эксперт РА Казахстан"
       - "Эксперт РА Узбекистан"
@@ -65,7 +55,6 @@ groups:
       - "Moody's Investors Service"
       - "Moody's ESG Solutions"
       - "DBRS Morningstar"
-      - "ICRA"
 
       # --- English: credit / rating phrases ---
       - "credit rating"
@@ -76,11 +65,6 @@ groups:
       - "credit risk assessment"
       - "creditworthiness assessment"
       - "creditworthiness"
-      - "rating action"
-      - "rating agency"
-      - "rating agencies"
-      - "rating methodology"
-      - "rating outlook"
       - "credit watch"
       - "investment grade"
       - "speculative grade"
@@ -93,11 +77,6 @@ groups:
       - "kredit reytinglari"
       - "kredit reytingini"
       - "kredit reytinglarini"
-      - "reyting agentligi"
-      - "reyting agentliklari"
-      - "xalqaro reyting"
-      - "xalqaro reytingi"
-      - "milliy reyting"
       - "kreditga layoqatlilik"
       - "kreditga qobiliyatlilik"
 
@@ -108,6 +87,7 @@ groups:
       - Moody's
       - Fitch
       - DBRS
+      - ICRA
       - JCR
 
     exclude_if_contains:
@@ -129,6 +109,23 @@ groups:
       - "кинорейтинг"
       - "рейтинг успеваемости"
       - "школьный рейтинг"
+      - "рейтинг востребованности"
+      - "востребованности вузов"
+      - "участие в рейтингах"
+      - "страхование"
+      - "страхования"
+      - "страховых"
+      - "страховой"
+      - "sug'urta"
+      - "sug‘urta"
+      - "sugurtalash"
+      - "sug‘urtalash"
+      - "insurance"
+      - "yuridik xizmat"
+      - "huquqiy xizmat"
+      - "юридические услуги"
+      - "правовое сопровождение"
+      - "legal services"
 
   esg:
     phrases:
@@ -212,10 +209,6 @@ groups:
       - "климатической отчетности"
       - "климатический аудит"
       - "климатического аудита"
-      - "энергоэффективность"
-      - "энергоэффективности"
-      - "энергетический аудит"
-      - "энергетического аудита"
       - "возобновляемая энергия"
       - "возобновляемой энергии"
       - "циркулярная экономика"
@@ -223,9 +216,14 @@ groups:
       - "климатическая стратегия"
 
       # --- Russian: governance / responsibility ---
-      - "корпоративное управление"
-      - "корпоративного управления"
-      - "корпоративному управлению"
+      - "оценка корпоративного управления"
+      - "оценки корпоративного управления"
+      - "оценку корпоративного управления"
+      - "оценке корпоративного управления"
+      - "оценкой корпоративного управления"
+      - "проведение оценки корпоративного управления"
+      - "консультационные услуги в области корпоративного управления"
+      - "услуги консультационные в области корпоративного управления"
       - "социальная ответственность"
       - "социальной ответственности"
       - "корпоративная социальная ответственность"
@@ -266,13 +264,17 @@ groups:
       - "climate-related disclosures"
       - "climate disclosure"
       - "climate transition"
+      - "greenhouse gas"
+      - "greenhouse gases"
       - "net-zero"
       - "net zero"
       - "low-carbon"
-      - "low carbon"
       - "decarbonization"
       - "decarbonisation"
-      - "corporate governance"
+      - "corporate governance assessment"
+      - "corporate governance review"
+      - "corporate governance advisory"
+      - "corporate governance consulting"
       - "responsible investment"
       - "responsible investing"
       - "green finance"
@@ -284,7 +286,6 @@ groups:
       - "EU taxonomy"
       - "Paris Agreement"
       - "Paris-aligned"
-      - "energy audit"
       - "environmental impact assessment"
       - "scope 1"
       - "scope 2"
@@ -306,11 +307,10 @@ groups:
       - "yashil obligatsiyalar"
       - "iqlim xavfi"
       - "iqlim o'zgarishi"
-      - "energetik audit"
-      - "energiya samaradorligi"
 
     tokens:
       - ESG
+      - GHG
       - GRI
       - TCFD
       - SASB
@@ -329,3 +329,35 @@ groups:
       - "корпоративной мобильной связи"
       - "корпоративная сеть"
       - "корпоративной сети"
+      - "обучающий семинар"
+      - "учебными/обучающими"
+      - "корпоративный секретарь"
+      - "пожарной сигнализации"
+      - "охранной сигнализации"
+      - "систем тушения"
+      - "чистке печей"
+      - "дымоход"
+      - "вентиляционных каналов"
+      - "поверке средств измерений"
+      - "средств измерений"
+      - "техническому обслуживанию"
+      - "детский сад"
+      - "библиотечная система"
+      - "дом культуры"
+      - "спорт мектебі"
+      - "школа"
+      - "колледж"
+      - "страхование"
+      - "страхования"
+      - "insurance"
+      - "sug'urta"
+      - "sug‘urta"
+      - "sugurtalash"
+      - "sug‘urtalash"
+      - "climate control"
+      - "iqlim nazorat"
+      - "иқлим назорат"
+      - "low carbon steel"
+      - "стальная дробь"
+      - "steel shot"
+      - "ehtiyot qismlar"

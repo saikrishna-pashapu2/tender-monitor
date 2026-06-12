@@ -178,6 +178,8 @@ def _searchable_text(tender: TenderUpsert) -> str:
     specific allowlist here.
     """
     parts: list[str] = [tender.title]
+    if tender.title_en:
+        parts.append(tender.title_en)
     if tender.buyer_name:
         parts.append(tender.buyer_name)
 

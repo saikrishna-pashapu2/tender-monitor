@@ -37,7 +37,11 @@ async def test_list_tenders_filter_country(seeded_session: AsyncSession) -> None
         1,
         25,
     )
-    assert result.total == 6
+    seeded_tenders = (
+        await seeded_session.execute(select(Tender))
+    ).scalars().all()
+    expected_total = sum(1 for row in seeded_tenders if row.country is Country.UZ)
+    assert result.total == expected_total
     assert all(row.country is Country.UZ for row in result.rows)
 
 
@@ -61,7 +65,11 @@ async def test_list_tenders_filter_matched_any(seeded_session: AsyncSession) -> 
         1,
         25,
     )
-    assert result.total == 6
+    seeded_tenders = (
+        await seeded_session.execute(select(Tender))
+    ).scalars().all()
+    expected_total = sum(1 for row in seeded_tenders if row.matched_groups)
+    assert result.total == expected_total
     assert all(row.matched_groups for row in result.rows)
 
 
@@ -91,7 +99,11 @@ async def test_list_tenders_filter_specific_group(
         1,
         25,
     )
-    assert result.total == 3
+    seeded_tenders = (
+        await seeded_session.execute(select(Tender))
+    ).scalars().all()
+    expected_total = sum(1 for row in seeded_tenders if "esg" in row.matched_groups)
+    assert result.total == expected_total
     assert all("esg" in row.matched_groups for row in result.rows)
 
 
@@ -108,6 +120,29 @@ async def test_list_tenders_search_matches_title(seeded_session: AsyncSession) -
     # 'Sustainability ESG audit (Uzbekistan)'
     assert result.total == 3
     assert any("ESG" in title for title in titles)
+
+
+async def test_list_tenders_search_matches_translated_title(
+    seeded_session: AsyncSession,
+) -> None:
+    row = (
+        await seeded_session.execute(
+            select(Tender).where(Tender.title == "Office supplies for the ministry")
+        )
+    ).scalar_one()
+    row.title_en = "Translated title only marker"
+    await seeded_session.flush()
+
+    result = await list_tenders(
+        seeded_session,
+        TenderFilters(q="only marker"),
+        "newest",
+        1,
+        25,
+    )
+
+    assert result.total == 1
+    assert result.rows[0].id == row.id
 
 
 async def test_list_tenders_search_matches_buyer(seeded_session: AsyncSession) -> None:

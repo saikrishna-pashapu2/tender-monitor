@@ -143,7 +143,13 @@ def _apply_filters(stmt: _SelectT, filters: TenderFilters) -> _SelectT:
 
     if filters.q:
         like = f"%{filters.q}%"
-        stmt = stmt.where(or_(Tender.title.ilike(like), Tender.buyer_name.ilike(like)))
+        stmt = stmt.where(
+            or_(
+                Tender.title.ilike(like),
+                Tender.title_en.ilike(like),
+                Tender.buyer_name.ilike(like),
+            )
+        )
 
     if filters.from_:
         stmt = stmt.where(Tender.published_at >= filters.from_)

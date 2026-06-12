@@ -146,6 +146,12 @@ class Tender(Base):
     )
 
     title: Mapped[str] = mapped_column(Text, nullable=False)
+    title_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    title_language: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    translation_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    title_translated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     buyer_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     buyer_external_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     country: Mapped[Country] = mapped_column(country_enum, nullable=False)

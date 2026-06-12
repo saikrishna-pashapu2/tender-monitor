@@ -109,6 +109,10 @@ async def upsert_tender(
             source_name=upsert.source_name,
             external_id=upsert.external_id,
             title=upsert.title,
+            title_en=upsert.title_en,
+            title_language=upsert.title_language,
+            translation_provider=upsert.translation_provider,
+            title_translated_at=upsert.title_translated_at,
             buyer_name=upsert.buyer_name,
             buyer_external_id=upsert.buyer_external_id,
             country=upsert.country,
@@ -133,6 +137,17 @@ async def upsert_tender(
         await session.flush()
         return UpsertResult(outcome=UpsertOutcome.created, tender_id=tender.id)
 
+    title_changed = _values_differ(existing.title, upsert.title)
+    translation_supplied = any(
+        value is not None
+        for value in (
+            upsert.title_en,
+            upsert.title_language,
+            upsert.translation_provider,
+            upsert.title_translated_at,
+        )
+    )
+
     # Always-write fields (not change-tracked).
     existing.last_seen_at = now
     existing.is_active = True
@@ -148,6 +163,11 @@ async def upsert_tender(
     existing.published_at = upsert.published_at
     existing.source_url = upsert.source_url
     existing.language = upsert.language
+    if translation_supplied or title_changed:
+        existing.title_en = upsert.title_en
+        existing.title_language = upsert.title_language
+        existing.translation_provider = upsert.translation_provider
+        existing.title_translated_at = upsert.title_translated_at
 
     # Tracked fields: diff + log.
     changed_fields: dict[str, dict[str, Any]] = {}

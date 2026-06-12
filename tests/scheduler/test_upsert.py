@@ -67,10 +67,91 @@ async def test_upsert_creates_new_tender(db_session: AsyncSession) -> None:
         "esg": {"matched_phrases": ["ESG audit"], "matched_tokens": []}
     }
     assert row.first_seen_at == T0
+    assert row.title_en is None
     assert row.last_seen_at == T0
     assert row.last_changed_at == T0
     assert row.change_log == []
     assert row.is_active is True
+
+
+async def test_upsert_persists_translation_fields(db_session: AsyncSession) -> None:
+    await _make_source(db_session)
+    translated_at = T0 + timedelta(seconds=5)
+
+    await upsert_tender(
+        db_session,
+        _base_upsert(
+            title_en="Initial title in English",
+            title_language="ru",
+            translation_provider="google_translate_pa",
+            title_translated_at=translated_at,
+        ),
+        MatchResult(),
+        T0,
+    )
+
+    row = (await db_session.execute(select(Tender))).scalar_one()
+    assert row.title_en == "Initial title in English"
+    assert row.title_language == "ru"
+    assert row.translation_provider == "google_translate_pa"
+    assert row.title_translated_at == translated_at
+
+
+async def test_upsert_preserves_translation_when_title_unchanged_and_none_supplied(
+    db_session: AsyncSession,
+) -> None:
+    await _make_source(db_session)
+    translated_at = T0 + timedelta(seconds=5)
+    await upsert_tender(
+        db_session,
+        _base_upsert(
+            title_en="Initial title in English",
+            title_language="ru",
+            translation_provider="google_translate_pa",
+            title_translated_at=translated_at,
+        ),
+        MatchResult(),
+        T0,
+    )
+
+    await upsert_tender(db_session, _base_upsert(), MatchResult(), T0 + timedelta(hours=1))
+
+    row = (await db_session.execute(select(Tender))).scalar_one()
+    assert row.title_en == "Initial title in English"
+    assert row.title_language == "ru"
+    assert row.translation_provider == "google_translate_pa"
+    assert row.title_translated_at == translated_at
+
+
+async def test_upsert_clears_translation_when_title_changes_and_none_supplied(
+    db_session: AsyncSession,
+) -> None:
+    await _make_source(db_session)
+    await upsert_tender(
+        db_session,
+        _base_upsert(
+            title_en="Initial title in English",
+            title_language="ru",
+            translation_provider="google_translate_pa",
+            title_translated_at=T0 + timedelta(seconds=5),
+        ),
+        MatchResult(),
+        T0,
+    )
+
+    await upsert_tender(
+        db_session,
+        _base_upsert(title="Changed title"),
+        MatchResult(),
+        T0 + timedelta(hours=1),
+    )
+
+    row = (await db_session.execute(select(Tender))).scalar_one()
+    assert row.title == "Changed title"
+    assert row.title_en is None
+    assert row.title_language is None
+    assert row.translation_provider is None
+    assert row.title_translated_at is None
 
 
 async def test_upsert_unchanged_updates_only_last_seen(

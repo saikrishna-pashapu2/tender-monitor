@@ -1,6 +1,8 @@
 New matched tender — {{ matched_groups|join(', ') }}
 
-{{ tender.title }}
+{{ tender.title_en or tender.title }}
+{% if tender.title_en and tender.title_en != tender.title %}Original: {{ tender.title }}
+{% endif %}
 {% if tender.buyer_name %}Buyer: {{ tender.buyer_name }}
 {% endif %}Source: {{ tender.source_name }} ({{ tender.country.value }})
 

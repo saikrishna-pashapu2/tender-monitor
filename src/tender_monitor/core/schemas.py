@@ -55,6 +55,10 @@ class TenderSummary(_ORMModel):
     source_name: str
     external_id: str
     title: str
+    title_en: str | None
+    title_language: str | None
+    translation_provider: str | None
+    title_translated_at: datetime | None
     buyer_name: str | None
     country: Country
     value_amount: Decimal | None
@@ -77,6 +81,10 @@ class TenderRead(_ORMModel):
     external_id: str
     canonical_id: UUID | None
     title: str
+    title_en: str | None
+    title_language: str | None
+    translation_provider: str | None
+    title_translated_at: datetime | None
     buyer_name: str | None
     buyer_external_id: str | None
     country: Country
@@ -140,6 +148,10 @@ class TenderUpsert(BaseModel):
     source_name: str
     external_id: str
     title: str
+    title_en: str | None = None
+    title_language: str | None = Field(default=None, max_length=16)
+    translation_provider: str | None = Field(default=None, max_length=64)
+    title_translated_at: datetime | None = None
     buyer_name: str | None = None
     buyer_external_id: str | None = None
     country: Country

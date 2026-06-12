@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from tender_monitor.connectors._browser_samruk import _extract_listing_items
 from tender_monitor.connectors.errors import FetchError, ParseError
 from tender_monitor.connectors.samruk_kazyna import SamrukKazynaConnector
 from tender_monitor.core.enums import Country, Language, TenderStatus
@@ -125,6 +126,41 @@ def _browser_factory(browser: _FakeBrowser) -> Callable[[], Any]:
         return _cm()
 
     return factory
+
+
+# ---------------------------------------------------------------------------
+# Browser payload helpers
+# ---------------------------------------------------------------------------
+
+
+def test_browser_extracts_top_level_listing_items() -> None:
+    items = [_build_listing_item(advert_id=1, accept_begin="2026-05-08T10:00:00Z")]
+
+    assert _extract_listing_items(items) == items
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"content": [_build_listing_item(advert_id=1, accept_begin="2026-05-08T10:00:00Z")]},
+        {"data": {"items": [_build_listing_item(advert_id=2, accept_begin="2026-05-08T10:00:00Z")]}},
+        {"result": {"rows": [_build_listing_item(advert_id=3, accept_begin="2026-05-08T10:00:00Z")]}},
+    ],
+)
+def test_browser_extracts_wrapped_listing_items(payload: dict[str, Any]) -> None:
+    items = _extract_listing_items(payload)
+
+    assert items is not None
+    assert len(items) == 1
+    assert isinstance(items[0]["id"], int)
+
+
+def test_browser_extracts_empty_wrapped_listing_page() -> None:
+    assert _extract_listing_items({"content": []}) == []
+
+
+def test_browser_rejects_non_listing_payload() -> None:
+    assert _extract_listing_items({"status": "ok", "messages": ["hello"]}) is None
 
 
 # ---------------------------------------------------------------------------
