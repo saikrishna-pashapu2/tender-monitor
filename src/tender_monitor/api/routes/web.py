@@ -6,8 +6,8 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tender_monitor.api.deps import get_session
@@ -30,9 +30,17 @@ from tender_monitor.api.templating import (
     is_scalar,
     templates,
 )
+from tender_monitor.core.models import Tender
+from tender_monitor.notifications.email import EmailSender, SMTPEmailSender
+from tender_monitor.notifications.share import (
+    ShareRecipientFailure,
+    list_share_contacts,
+    normalize_recipients,
+    normalize_sender_name,
+    share_tender_by_email,
+)
 
 router = APIRouter()
-
 
 SOURCE_DETAIL_OMITTED_KEYS = {
     "_documents",
@@ -72,6 +80,10 @@ UZEX_DOCUMENT_TAB_ORDER = (
     "Contracts",
     "Other files",
 )
+
+
+def get_share_email_sender() -> EmailSender:
+    return SMTPEmailSender()
 
 
 def _rows_from_keys(
@@ -1520,15 +1532,19 @@ async def tender_list(
     return templates.TemplateResponse(request, template, context)
 
 
-@router.get("/tenders/{tender_id}", response_class=HTMLResponse)
-async def tender_detail(
-    request: Request,
-    tender_id: UUID,
-    session: AsyncSession = Depends(get_session),
-) -> HTMLResponse:
-    tender = await get_tender(session, tender_id)
-    if tender is None:
-        raise HTTPException(status_code=404, detail="Tender not found")
+async def _build_tender_detail_context(
+    session: AsyncSession,
+    tender: Tender,
+    *,
+    share_sent: bool = False,
+    share_error: str | None = None,
+    share_modal_open: bool = False,
+    share_sender_name: str = "",
+    share_recipients: list[str] | None = None,
+    share_message: str = "",
+    share_sent_recipients: list[str] | None = None,
+    share_failed_recipients: list[ShareRecipientFailure] | None = None,
+) -> dict[str, object]:
     total_tenders, total_sources, last_seen = await overall_counters(session)
 
     lots: list[dict[str, object]] = []
@@ -1613,31 +1629,174 @@ async def tender_detail(
 
     related = await list_related_tenders(session, tender.source_name, tender.id, limit=12)
 
+    return {
+        "tender": tender,
+        "lots": lots,
+        "documents": documents,
+        "source_groups": source_groups,
+        "source_sections": source_sections,
+        "uzex_view": uzex_view,
+        "goszakup_view": goszakup_view,
+        "mitwork_view": mitwork_view,
+        "national_bank_view": national_bank_view,
+        "zakup_unified_view": zakup_unified_view,
+        "samruk_kazyna_view": samruk_kazyna_view,
+        "ets_tender_view": ets_tender_view,
+        "xt_xarid_view": xt_xarid_view,
+        "tendersinfo_view": tendersinfo_view,
+        "uzbekistan_tenders_view": uzbekistan_tenders_view,
+        "related": related,
+        "share_sent": share_sent,
+        "share_error": share_error,
+        "share_modal_open": share_modal_open,
+        "share_sender_name": share_sender_name,
+        "share_recipients": share_recipients or [],
+        "share_message": share_message,
+        "share_sent_recipients": share_sent_recipients or [],
+        "share_failed_recipients": share_failed_recipients or [],
+        "total_tenders": total_tenders,
+        "total_sources": total_sources,
+        "last_seen": last_seen,
+    }
+
+
+@router.get("/tenders/{tender_id}", response_class=HTMLResponse)
+async def tender_detail(
+    request: Request,
+    tender_id: UUID,
+    session: AsyncSession = Depends(get_session),
+) -> HTMLResponse:
+    tender = await get_tender(session, tender_id)
+    if tender is None:
+        raise HTTPException(status_code=404, detail="Tender not found")
+
+    share_sent = request.query_params.get("share") == "sent"
+    context = await _build_tender_detail_context(
+        session,
+        tender,
+        share_sent=share_sent,
+        share_modal_open=share_sent,
+    )
     return templates.TemplateResponse(
         request,
         "tenders/detail.html",
-        {
-            "tender": tender,
-            "lots": lots,
-            "documents": documents,
-            "source_groups": source_groups,
-            "source_sections": source_sections,
-            "uzex_view": uzex_view,
-            "goszakup_view": goszakup_view,
-            "mitwork_view": mitwork_view,
-            "national_bank_view": national_bank_view,
-            "zakup_unified_view": zakup_unified_view,
-            "samruk_kazyna_view": samruk_kazyna_view,
-            "ets_tender_view": ets_tender_view,
-            "xt_xarid_view": xt_xarid_view,
-            "tendersinfo_view": tendersinfo_view,
-            "uzbekistan_tenders_view": uzbekistan_tenders_view,
-            "related": related,
-            "total_tenders": total_tenders,
-            "total_sources": total_sources,
-            "last_seen": last_seen,
-        },
+        context,
     )
 
 
-__all__ = ["router"]
+@router.post("/tenders/{tender_id}/share", response_class=HTMLResponse)
+async def share_tender(
+    request: Request,
+    tender_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    sender_name: str = Form(""),
+    recipients: list[str] = Form(default_factory=list),
+    message: str = Form(""),
+    sender: EmailSender = Depends(get_share_email_sender),
+) -> Response:
+    tender = await get_tender(session, tender_id)
+    if tender is None:
+        raise HTTPException(status_code=404, detail="Tender not found")
+
+    normalized_sender_name = normalize_sender_name(sender_name)
+    normalized_recipients, invalid_recipients = normalize_recipients(recipients)
+    clean_message = message.strip()
+
+    validation_errors: list[str] = []
+    if normalized_sender_name is None:
+        validation_errors.append("Enter your name.")
+    if not normalized_recipients:
+        validation_errors.append("Add at least one recipient email address.")
+    if invalid_recipients:
+        invalid_list = ", ".join(invalid_recipients)
+        validation_errors.append(f"Remove invalid recipient email address(es): {invalid_list}.")
+
+    if validation_errors:
+        context = await _build_tender_detail_context(
+            session,
+            tender,
+            share_error=" ".join(validation_errors),
+            share_modal_open=True,
+            share_sender_name=sender_name,
+            share_recipients=normalized_recipients,
+            share_message=clean_message,
+        )
+        return templates.TemplateResponse(
+            request,
+            "tenders/detail.html",
+            context,
+            status_code=400,
+        )
+
+    assert normalized_sender_name is not None
+    result = await share_tender_by_email(
+        session=session,
+        tender_id=tender_id,
+        sender_name=normalized_sender_name,
+        recipients=normalized_recipients,
+        message=clean_message or None,
+        sender=sender,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Tender not found")
+
+    if result.invalid:
+        invalid_list = ", ".join(result.invalid)
+        context = await _build_tender_detail_context(
+            session,
+            tender,
+            share_error=f"Remove invalid recipient email address(es): {invalid_list}.",
+            share_modal_open=True,
+            share_sender_name=normalized_sender_name,
+            share_recipients=normalized_recipients,
+            share_message=clean_message,
+        )
+        return templates.TemplateResponse(
+            request,
+            "tenders/detail.html",
+            context,
+            status_code=400,
+        )
+
+    if result.failed:
+        failed_list = ", ".join(failure.recipient for failure in result.failed)
+        if result.sent:
+            share_error = (
+                f"Shared with {len(result.sent)} recipient(s), but failed for "
+                f"{failed_list}."
+            )
+        else:
+            share_error = (
+                f"Could not send to {failed_list}. "
+                "Check SMTP settings and try again."
+            )
+        context = await _build_tender_detail_context(
+            session,
+            tender,
+            share_error=share_error,
+            share_modal_open=True,
+            share_sender_name=normalized_sender_name,
+            share_recipients=normalized_recipients,
+            share_message=clean_message,
+            share_sent_recipients=result.sent,
+            share_failed_recipients=result.failed,
+        )
+        return templates.TemplateResponse(
+            request,
+            "tenders/detail.html",
+            context,
+            status_code=502,
+        )
+
+    return RedirectResponse(url=f"/tenders/{tender_id}?share=sent", status_code=303)
+
+
+@router.get("/share/contacts")
+async def share_contacts(
+    sender_name: str = "",
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, list[str]]:
+    return {"contacts": await list_share_contacts(session, sender_name)}
+
+
+__all__ = ["get_share_email_sender", "router"]

@@ -302,10 +302,47 @@ class EmailRecipient(Base):
     )
 
 
+class ShareContact(Base):
+    """Saved one-off tender share recipient for a typed sender name."""
+
+    __tablename__ = "share_contacts"
+    __table_args__ = (
+        UniqueConstraint(
+            "sender_key",
+            "email",
+            name="uq_share_contacts_sender_email",
+        ),
+        Index("ix_share_contacts_sender_key", "sender_key"),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    sender_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    sender_key: Mapped[str] = mapped_column(String(256), nullable=False)
+    email: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    last_used_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    use_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="1"
+    )
+
+
 __all__ = [
     "EmailRecipient",
     "Feedback",
     "NotificationLog",
+    "ShareContact",
     "Source",
     "Tender",
 ]

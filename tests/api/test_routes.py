@@ -15,6 +15,20 @@ from sqlalchemy.ext.asyncio import (
 
 from tender_monitor.api.app import app
 from tender_monitor.api.deps import get_session
+from tender_monitor.api.routes.web import get_share_email_sender
+from tender_monitor.notifications.email import EmailMessageContent
+
+
+class RouteRecordingSender:
+    def __init__(self, *, fail: bool = False, fail_for: set[str] | None = None) -> None:
+        self.fail = fail
+        self.fail_for = fail_for or set()
+        self.sent: list[tuple[str, EmailMessageContent]] = []
+
+    async def send(self, *, to: str, message: EmailMessageContent) -> None:
+        if self.fail or to in self.fail_for:
+            raise RuntimeError("forced route failure")
+        self.sent.append((to, message))
 
 
 @pytest_asyncio.fixture(loop_scope="function")
@@ -99,6 +113,165 @@ def test_detail_endpoint_returns_200_for_existing(client: TestClient) -> None:
     assert "Просмотр объявления" in resp.text
     assert "Общие сведения" in resp.text
     assert "Raw source payload" in resp.text
+
+
+def test_detail_endpoint_renders_share_button_and_modal(client: TestClient) -> None:
+    tender_id = _credit_rating_tender_id(client)
+    resp = client.get(f"/tenders/{tender_id}")
+    assert resp.status_code == 200
+    assert 'data-share-open' in resp.text
+    assert 'id="share-modal"' in resp.text
+    assert f'action="/tenders/{tender_id}/share"' in resp.text
+    assert 'name="sender_name"' in resp.text
+    assert 'name="recipients"' in resp.text
+    assert "Share" in resp.text
+
+
+def test_share_tender_requires_sender_name(client: TestClient) -> None:
+    tender_id = _credit_rating_tender_id(client)
+    resp = client.post(
+        f"/tenders/{tender_id}/share",
+        data={"recipients": "analyst@example.com"},
+    )
+    assert resp.status_code == 400
+    assert "Enter your name." in resp.text
+    assert 'role="dialog"' in resp.text
+    assert 'id="share-sender-name"' in resp.text
+
+
+def test_share_tender_requires_recipient(client: TestClient) -> None:
+    tender_id = _credit_rating_tender_id(client)
+    resp = client.post(
+        f"/tenders/{tender_id}/share",
+        data={"sender_name": "Sai"},
+    )
+    assert resp.status_code == 400
+    assert "Add at least one recipient email address." in resp.text
+    assert 'id="share-recipient-input"' in resp.text
+
+
+def test_share_tender_rejects_invalid_recipient_without_sending(
+    client: TestClient,
+) -> None:
+    tender_id = _credit_rating_tender_id(client)
+    sender = RouteRecordingSender()
+    app.dependency_overrides[get_share_email_sender] = lambda: sender
+    try:
+        resp = client.post(
+            f"/tenders/{tender_id}/share",
+            data={"sender_name": "Sai", "recipients": "not-email"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_share_email_sender, None)
+
+    assert resp.status_code == 400
+    assert "Remove invalid recipient email address(es): not-email." in resp.text
+    assert sender.sent == []
+
+
+def test_share_tender_returns_404_for_unknown_tender(client: TestClient) -> None:
+    resp = client.post(
+        f"/tenders/{uuid4()}/share",
+        data={"sender_name": "Sai", "recipients": "analyst@example.com"},
+    )
+    assert resp.status_code == 404
+
+
+def test_share_tender_sends_multiple_deduped_recipients(
+    client: TestClient,
+) -> None:
+    tender_id = _credit_rating_tender_id(client)
+    sender = RouteRecordingSender()
+    app.dependency_overrides[get_share_email_sender] = lambda: sender
+    try:
+        resp = client.post(
+            f"/tenders/{tender_id}/share",
+            data={
+                "sender_name": "Sai Kumar",
+                "recipients": [
+                    "Analyst@Example.Com",
+                    "analyst@example.com",
+                    "manager@example.com",
+                ],
+                "message": "Worth reviewing before the deadline.",
+            },
+            follow_redirects=False,
+        )
+    finally:
+        app.dependency_overrides.pop(get_share_email_sender, None)
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == f"/tenders/{tender_id}?share=sent"
+    assert [entry[0] for entry in sender.sent] == [
+        "analyst@example.com",
+        "manager@example.com",
+    ]
+    assert "Sai Kumar shared a tender:" in sender.sent[0][1].subject
+    assert "Worth reviewing before the deadline." in sender.sent[0][1].text
+
+    follow = client.get(resp.headers["location"])
+    assert follow.status_code == 200
+    assert 'data-share-success="true"' in follow.text
+    assert "Tender sent" in follow.text
+    assert "The tender has been shared by email." in follow.text
+    assert "Tender shared by email." not in follow.text
+    assert 'id="share-sender-name"' not in follow.text
+    assert 'id="share-recipient-input"' not in follow.text
+    assert 'id="share-message"' not in follow.text
+    assert 'data-lucide="send"' not in follow.text
+
+
+def test_share_tender_renders_partial_smtp_failure(client: TestClient) -> None:
+    tender_id = _credit_rating_tender_id(client)
+    sender = RouteRecordingSender(fail_for={"broken@example.com"})
+    app.dependency_overrides[get_share_email_sender] = lambda: sender
+    try:
+        resp = client.post(
+            f"/tenders/{tender_id}/share",
+            data={
+                "sender_name": "Sai",
+                "recipients": ["broken@example.com", "works@example.com"],
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_share_email_sender, None)
+
+    assert resp.status_code == 502
+    assert "Shared with 1 recipient(s), but failed for broken@example.com." in resp.text
+    assert sender.sent[0][0] == "works@example.com"
+    assert 'id="share-sender-name"' in resp.text
+    assert 'id="share-recipient-input"' in resp.text
+
+
+def test_share_contacts_returns_contacts_for_normalized_sender(
+    client: TestClient,
+) -> None:
+    tender_id = _credit_rating_tender_id(client)
+    sender = RouteRecordingSender()
+    app.dependency_overrides[get_share_email_sender] = lambda: sender
+    try:
+        resp = client.post(
+            f"/tenders/{tender_id}/share",
+            data={
+                "sender_name": " Sai   Kumar ",
+                "recipients": ["analyst@example.com", "manager@example.com"],
+            },
+            follow_redirects=False,
+        )
+    finally:
+        app.dependency_overrides.pop(get_share_email_sender, None)
+    assert resp.status_code == 303
+
+    contacts = client.get("/share/contacts?sender_name=sai%20kumar")
+    assert contacts.status_code == 200
+    assert set(contacts.json()["contacts"]) == {
+        "analyst@example.com",
+        "manager@example.com",
+    }
+
+    other = client.get("/share/contacts?sender_name=Someone%20Else")
+    assert other.status_code == 200
+    assert other.json()["contacts"] == []
 
 
 def test_detail_endpoint_renders_goszakup_source_layout(client: TestClient) -> None:

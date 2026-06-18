@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{ tender.title_en or tender.title }}</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#111827;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f5f7;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid #e5e7eb;max-width:640px;width:100%;">
+            <tr>
+              <td style="background:#0f172a;color:#ffffff;padding:16px 24px;font-size:13px;letter-spacing:0.05em;text-transform:uppercase;">
+                Tender shared by {{ sender_name }}
+                {% for group in matched_groups %}
+                  <span style="margin-left:8px;background:rgba(255,255,255,0.18);padding:2px 8px;border-radius:4px;font-size:11px;letter-spacing:0.04em;">
+                    {{ group }}
+                  </span>
+                {% endfor %}
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:22px 24px 0 24px;">
+                <p style="margin:0;font-size:15px;line-height:1.5;color:#374151;">
+                  <strong style="color:#111827;">{{ sender_name }}</strong> shared this tender with you.
+                </p>
+                {% if share_message %}
+                  <div style="margin-top:14px;border-left:4px solid #2563eb;background:#eff6ff;padding:12px 14px;border-radius:6px;">
+                    <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:#1d4ed8;font-weight:600;margin-bottom:6px;">Comment</div>
+                    <p style="margin:0;white-space:pre-wrap;font-size:14px;line-height:1.5;color:#1f2937;">{{ share_message }}</p>
+                  </div>
+                {% endif %}
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:24px 24px 8px 24px;">
+                <h1 style="margin:0;font-size:20px;line-height:1.3;color:#111827;font-weight:600;">
+                  {{ tender.title_en or tender.title }}
+                </h1>
+                {% if tender.title_en and tender.title_en != tender.title %}
+                  <p style="margin:8px 0 0 0;font-size:13px;color:#6b7280;">
+                    Original: {{ tender.title }}
+                  </p>
+                {% endif %}
+                {% if tender.buyer_name %}
+                  <p style="margin:8px 0 0 0;font-size:14px;color:#4b5563;">
+                    {{ tender.buyer_name }}
+                  </p>
+                {% endif %}
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:0 24px 16px 24px;font-size:13px;color:#6b7280;">
+                {{ tender.country.value|country_flag }} {{ tender.source_name }}
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:0 24px 16px 24px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;">
+                  <tr>
+                    <td width="33%" style="padding:14px 12px 14px 0;vertical-align:top;">
+                      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:#6b7280;">Published</div>
+                      <div style="font-size:14px;color:#111827;font-weight:500;margin-top:4px;">
+                        {% if tender.published_at %}{{ tender.published_at|pretty_scalar }}{% else %}-{% endif %}
+                      </div>
+                    </td>
+                    <td width="33%" style="padding:14px 12px;vertical-align:top;border-left:1px solid #e5e7eb;">
+                      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:#6b7280;">Deadline</div>
+                      <div style="font-size:14px;color:#111827;font-weight:500;margin-top:4px;">
+                        {% if tender.deadline_at %}
+                          {{ tender.deadline_at|pretty_scalar }}
+                          {% set d = tender.deadline_at|deadline_state %}
+                          <span style="font-size:11px;color:#6b7280;">({{ d.label }})</span>
+                        {% else %}-{% endif %}
+                      </div>
+                    </td>
+                    <td width="33%" style="padding:14px 0 14px 12px;vertical-align:top;border-left:1px solid #e5e7eb;">
+                      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:#6b7280;">Value</div>
+                      <div style="font-size:14px;color:#111827;font-weight:500;margin-top:4px;">
+                        {% if tender.value_amount is not none %}
+                          {{ tender.value_amount|pretty_amount_with_usd(tender.value_currency) }}
+                        {% else %}-{% endif %}
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            {% if match_details %}
+            <tr>
+              <td style="padding:0 24px 16px 24px;">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:#6b7280;margin-bottom:8px;">Why this matched</div>
+                {% for group in matched_groups %}
+                  {% set details = match_details.get(group) or {} %}
+                  {% set hits = (details.get('matched_phrases') or []) + (details.get('matched_tokens') or []) %}
+                  <div style="margin-bottom:6px;font-size:13px;color:#374151;">
+                    <strong style="color:#111827;">{{ group }}:</strong>
+                    {% for h in hits %}
+                      <span style="background:#f3f4f6;padding:2px 6px;border-radius:3px;margin-right:4px;font-size:12px;">{{ h }}</span>
+                    {% endfor %}
+                  </div>
+                {% endfor %}
+              </td>
+            </tr>
+            {% endif %}
+
+            <tr>
+              <td style="padding:8px 24px 24px 24px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td style="background:#1d4ed8;border-radius:6px;">
+                      <a href="{{ detail_url }}"
+                         style="display:inline-block;padding:10px 18px;color:#ffffff;text-decoration:none;font-size:14px;font-weight:500;">
+                        Open in Tender Monitor
+                      </a>
+                    </td>
+                    <td style="padding-left:8px;">
+                      <a href="{{ source_url }}"
+                         style="display:inline-block;padding:10px 18px;color:#1d4ed8;text-decoration:none;font-size:14px;font-weight:500;border:1px solid #c7d2fe;border-radius:6px;">
+                        View on source
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:14px 24px;font-size:12px;color:#6b7280;">
+                {{ sender_name }} shared this tender with you from Tender Monitor. This does not subscribe you to future tender notifications.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

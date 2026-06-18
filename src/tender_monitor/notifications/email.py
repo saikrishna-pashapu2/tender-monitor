@@ -12,7 +12,6 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import Any, Protocol
 
-import aiosmtplib
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from tender_monitor.api.templating import (
@@ -73,24 +72,54 @@ def _env() -> Environment:
     return _email_env
 
 
-def render_email(*, tender: Any, app_base_url: str) -> EmailMessageContent:
-    """Render the HTML + plain-text bodies for one matched tender."""
-    env = _env()
+def _email_context(*, tender: Any, app_base_url: str) -> dict[str, Any]:
     detail_url = f"{app_base_url.rstrip('/')}/tenders/{tender.id}"
-    context = {
+    return {
         "tender": tender,
         "detail_url": detail_url,
         "source_url": tender.source_url,
         "matched_groups": list(tender.matched_groups or []),
         "match_details": tender.match_details or {},
     }
-    html = env.get_template("tender_match.html").render(**context)
-    text = env.get_template("tender_match.txt").render(**context)
+
+
+def _title_snippet(tender: Any) -> str:
     title_snippet = (getattr(tender, "title_en", None) or tender.title or "").strip()
     if len(title_snippet) > 80:
-        title_snippet = title_snippet[:77] + "…"
+        title_snippet = title_snippet[:77] + "..."
+    return title_snippet
+
+
+def render_email(*, tender: Any, app_base_url: str) -> EmailMessageContent:
+    """Render the HTML + plain-text bodies for one matched tender."""
+    env = _env()
+    context = _email_context(tender=tender, app_base_url=app_base_url)
+    html = env.get_template("tender_match.html").render(**context)
+    text = env.get_template("tender_match.txt").render(**context)
     groups = "+".join(tender.matched_groups or []) or "match"
-    subject = f"[{groups}] {title_snippet}"
+    subject = f"[{groups}] {_title_snippet(tender)}"
+    return EmailMessageContent(subject=subject, html=html, text=text)
+
+
+def render_share_email(
+    *,
+    tender: Any,
+    app_base_url: str,
+    sender_name: str,
+    message: str | None = None,
+) -> EmailMessageContent:
+    """Render a one-off tender share email.
+
+    This intentionally does not use the subscription footer from the
+    matched-tender notification template.
+    """
+    env = _env()
+    context = _email_context(tender=tender, app_base_url=app_base_url)
+    context["sender_name"] = sender_name
+    context["share_message"] = message.strip() if message and message.strip() else None
+    html = env.get_template("tender_share.html").render(**context)
+    text = env.get_template("tender_share.txt").render(**context)
+    subject = f"{sender_name} shared a tender: {_title_snippet(tender)}"
     return EmailMessageContent(subject=subject, html=html, text=text)
 
 
@@ -118,6 +147,8 @@ class SMTPEmailSender:
         return bool(self.host and self.user and self.password and self.sender_from)
 
     async def send(self, *, to: str, message: EmailMessageContent) -> None:
+        import aiosmtplib
+
         if not self.configured:
             raise RuntimeError(
                 "SMTP not configured; set SMTP_HOST / SMTP_USER / "
@@ -151,4 +182,5 @@ __all__ = [
     "EmailSender",
     "SMTPEmailSender",
     "render_email",
+    "render_share_email",
 ]

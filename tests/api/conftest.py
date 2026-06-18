@@ -21,7 +21,7 @@ T0 = datetime(2026, 5, 18, 12, 0, tzinfo=UTC)
 
 @pytest_asyncio.fixture(loop_scope="function", autouse=True)
 async def _truncate_tables(test_database_url: str) -> AsyncIterator[None]:
-    """Wipe the four domain tables before AND after every API test.
+    """Wipe committed API tables before AND after every API test.
 
     The API tests' TestClient opens its own sessions that commit, so
     the rollback in the shared ``db_session`` fixture is not enough to
@@ -31,7 +31,7 @@ async def _truncate_tables(test_database_url: str) -> AsyncIterator[None]:
     """
     engine = create_async_engine(test_database_url, future=True)
     truncate_sql = (
-        "TRUNCATE notification_logs, feedback, tenders, sources "
+        "TRUNCATE notification_logs, share_contacts, feedback, tenders, sources "
         "RESTART IDENTITY CASCADE"
     )
     try:

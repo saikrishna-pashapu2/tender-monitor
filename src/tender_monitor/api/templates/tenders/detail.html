@@ -99,13 +99,25 @@
                 <span>First seen <span title="{{ tender.first_seen_at|isoformat }}">{{ tender.first_seen_at|timeago }}</span></span>
               </div>
             </div>
-            <a href="{{ tender.source_url }}"
-               target="_blank"
-               rel="noopener"
-               class="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800">
-              <i data-lucide="external-link" class="h-4 w-4"></i>
-              Open at source
-            </a>
+            <div class="w-full shrink-0 space-y-2 sm:w-auto sm:min-w-[22rem]">
+              <div class="flex flex-wrap gap-2 sm:justify-end">
+                <a href="{{ tender.source_url }}"
+                   target="_blank"
+                   rel="noopener"
+                   class="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800">
+                  <i data-lucide="external-link" class="h-4 w-4"></i>
+                  Open at source
+                </a>
+                <button type="button"
+                        data-share-open
+                        aria-haspopup="dialog"
+                        aria-controls="share-modal"
+                        class="inline-flex shrink-0 items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700 transition hover:bg-blue-100">
+                  <i data-lucide="share-2" class="h-4 w-4"></i>
+                  Share
+                </button>
+              </div>
+            </div>
           </div>
 
           <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -171,6 +183,151 @@
           </div>
         </div>
       </header>
+
+      <div id="share-modal"
+           data-share-modal
+           data-share-success="{% if share_sent %}true{% else %}false{% endif %}"
+           role="dialog"
+           aria-modal="true"
+           aria-labelledby="share-modal-title"
+           class="{% if not share_modal_open %}hidden {% endif %}fixed inset-0 z-50 overflow-y-auto">
+        <div class="relative flex min-h-full items-center justify-center px-4 py-6">
+          <button type="button"
+                  data-share-close
+                  class="fixed inset-0 bg-slate-950/55"
+                  aria-label="Close share dialog"></button>
+          <form id="share-form"
+                method="post"
+                action="/tenders/{{ tender.id }}/share"
+                class="relative z-10 w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/20">
+            <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div>
+                <h2 id="share-modal-title" class="text-base font-semibold text-slate-950">
+                  {% if share_sent %}Tender sent{% else %}Share tender{% endif %}
+                </h2>
+                <p class="mt-1 text-sm text-slate-500">
+                  {% if share_sent %}The email was sent successfully.{% else %}Each recipient receives a separate email.{% endif %}
+                </p>
+              </div>
+              <button type="button"
+                      data-share-close
+                      class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+                      aria-label="Close share dialog">
+                <i data-lucide="x" class="h-4 w-4"></i>
+              </button>
+            </div>
+
+            {% if share_sent %}
+              <div class="px-5 py-10 text-center sm:px-8 sm:py-12">
+                <div class="mx-auto mb-6 flex h-28 w-28 items-center justify-center">
+                  <div class="relative flex h-24 w-24 items-center justify-center">
+                    <span class="absolute inset-0 rounded-full bg-emerald-300/40 animate-ping"></span>
+                    <span class="absolute inset-2 rounded-full bg-emerald-100 animate-pulse"></span>
+                    <span class="relative flex h-16 w-16 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-200">
+                      <i data-lucide="check" class="h-8 w-8"></i>
+                    </span>
+                  </div>
+                </div>
+                <h3 class="text-2xl font-semibold text-slate-950">Tender sent</h3>
+                <p class="mx-auto mt-3 max-w-sm text-sm leading-6 text-slate-500">
+                  The tender has been shared by email. Recipients can open it from the message in their inbox.
+                </p>
+                <button type="button"
+                        data-share-close
+                        class="mt-7 inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-800">
+                  <i data-lucide="check-circle-2" class="h-4 w-4"></i>
+                  Done
+                </button>
+              </div>
+            {% else %}
+            <div class="space-y-4 px-5 py-5">
+              {% if share_error %}
+                <div class="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                  {{ share_error }}
+                </div>
+              {% endif %}
+              {% if share_sent_recipients %}
+                <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                  Sent to {{ share_sent_recipients|join(", ") }}.
+                </div>
+              {% endif %}
+              {% if share_failed_recipients %}
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                  {% for failure in share_failed_recipients %}
+                    <div><span class="font-medium">{{ failure.recipient }}</span>: {{ failure.error }}</div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+              <div>
+                <label for="share-sender-name" class="mb-1.5 block text-sm font-medium text-slate-700">Your name</label>
+                <input id="share-sender-name"
+                       name="sender_name"
+                       type="text"
+                       value="{{ share_sender_name or '' }}"
+                       required
+                       autocomplete="name"
+                       class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-100 placeholder:text-slate-400 focus:border-blue-500 focus:ring-blue-500" />
+              </div>
+
+              <div>
+                <label for="share-recipient-input" class="mb-1.5 block text-sm font-medium text-slate-700">Recipients</label>
+                <div id="share-recipient-field"
+                     class="min-h-12 rounded-2xl border border-slate-200 bg-white px-2.5 py-2 shadow-sm shadow-slate-100 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500">
+                  <input type="hidden" name="recipients" value="" aria-hidden="true" />
+                  <div id="share-recipient-chips" class="flex flex-wrap items-center gap-2">
+                    {% for recipient in share_recipients %}
+                      <span data-recipient-chip="{{ recipient }}"
+                            class="inline-flex max-w-full items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-sm font-medium text-blue-800">
+                        <span class="truncate">{{ recipient }}</span>
+                        <button type="button"
+                                data-recipient-remove="{{ recipient }}"
+                                class="inline-flex h-5 w-5 items-center justify-center rounded-full text-blue-500 transition hover:bg-blue-100 hover:text-blue-800"
+                                aria-label="Remove {{ recipient }}">
+                          <i data-lucide="x" class="h-3 w-3"></i>
+                        </button>
+                        <input type="hidden" name="recipients" value="{{ recipient }}" data-recipient-hidden />
+                      </span>
+                    {% endfor %}
+                    <input id="share-recipient-input"
+                           type="text"
+                           inputmode="email"
+                           autocomplete="off"
+                           placeholder="Type email and press Enter"
+                           class="min-w-[14rem] flex-1 border-0 bg-transparent px-1 py-1.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:ring-0" />
+                  </div>
+                </div>
+                <div id="share-recipient-suggestions"
+                     class="mt-2 hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg shadow-slate-200"
+                     role="listbox"></div>
+                <div id="share-client-error"
+                     class="mt-2 hidden rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800"></div>
+              </div>
+
+              <div>
+                <label for="share-message" class="mb-1.5 block text-sm font-medium text-slate-700">Message <span class="font-normal text-slate-400">(optional)</span></label>
+                <textarea id="share-message"
+                          name="message"
+                          rows="4"
+                          class="w-full resize-y rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-100 placeholder:text-slate-400 focus:border-blue-500 focus:ring-blue-500">{{ share_message or '' }}</textarea>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">
+              <button type="button"
+                      data-share-close
+                      class="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                Cancel
+              </button>
+              <button type="submit"
+                      class="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-700 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-800">
+                <i data-lucide="send" class="h-4 w-4"></i>
+                Send
+              </button>
+            </div>
+            {% endif %}
+          </form>
+        </div>
+      </div>
 
       <div class="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.9fr)]">
         <section class="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70 sm:p-6">
@@ -552,6 +709,246 @@
         });
         if (first) activateTab(group, first.dataset.tabTarget);
       });
+    })();
+
+    (() => {
+      const modal = document.querySelector('[data-share-modal]');
+      if (!modal) return;
+
+      const form = document.getElementById('share-form');
+      const senderInput = document.getElementById('share-sender-name');
+      const field = document.getElementById('share-recipient-field');
+      const chips = document.getElementById('share-recipient-chips');
+      const input = document.getElementById('share-recipient-input');
+      const suggestions = document.getElementById('share-recipient-suggestions');
+      const clientError = document.getElementById('share-client-error');
+      const successMode = modal.dataset.shareSuccess === 'true';
+      const emailPattern = /^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/;
+      const splitPattern = /[\s,;]+/;
+      let lastFocused = null;
+      let contactsTimer = null;
+      let contactsController = null;
+
+      const hiddenInputs = () => chips ? Array.from(chips.querySelectorAll('[data-recipient-hidden]')) : [];
+      const currentEmails = () => hiddenInputs().map((node) => node.value);
+      const hasEmail = (email) => currentEmails().includes(email);
+      const refreshIcons = () => {
+        if (window.lucide) window.lucide.createIcons();
+      };
+      const setClientError = (message) => {
+        if (!clientError) return;
+        clientError.textContent = message;
+        clientError.classList.toggle('hidden', !message);
+      };
+      const hideSuggestions = () => {
+        if (!suggestions) return;
+        suggestions.classList.add('hidden');
+        suggestions.innerHTML = '';
+      };
+      const cleanSuccessUrl = () => {
+        if (!successMode || window.location.search.indexOf('share=sent') === -1) return;
+        const url = new URL(window.location.href);
+        url.searchParams.delete('share');
+        const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+        window.history.replaceState({}, '', nextUrl);
+      };
+
+      const addRecipient = (rawEmail) => {
+        if (!input) return false;
+        const email = rawEmail.trim().toLowerCase();
+        if (!email) return true;
+        if (!emailPattern.test(email)) {
+          setClientError(`Invalid email address: ${email}`);
+          return false;
+        }
+        if (hasEmail(email)) {
+          setClientError('');
+          return true;
+        }
+
+        const chip = document.createElement('span');
+        chip.dataset.recipientChip = email;
+        chip.className = 'inline-flex max-w-full items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-sm font-medium text-blue-800';
+
+        const label = document.createElement('span');
+        label.className = 'truncate';
+        label.textContent = email;
+
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.dataset.recipientRemove = email;
+        remove.className = 'inline-flex h-5 w-5 items-center justify-center rounded-full text-blue-500 transition hover:bg-blue-100 hover:text-blue-800';
+        remove.setAttribute('aria-label', `Remove ${email}`);
+        const icon = document.createElement('i');
+        icon.dataset.lucide = 'x';
+        icon.className = 'h-3 w-3';
+        remove.appendChild(icon);
+
+        const hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.name = 'recipients';
+        hidden.value = email;
+        hidden.dataset.recipientHidden = '';
+
+        chip.append(label, remove, hidden);
+        input.before(chip);
+        setClientError('');
+        refreshIcons();
+        return true;
+      };
+
+      const addTokensFromInput = () => {
+        if (!input) return true;
+        const raw = input.value.trim();
+        if (!raw) return true;
+        const tokens = raw.split(splitPattern).filter(Boolean);
+        const allValid = tokens.map(addRecipient).every(Boolean);
+        if (allValid) input.value = '';
+        return allValid;
+      };
+
+      const renderSuggestions = (contacts) => {
+        if (!suggestions) return;
+        const available = contacts.filter((email) => !hasEmail(email));
+        suggestions.innerHTML = '';
+        if (!available.length) {
+          hideSuggestions();
+          return;
+        }
+        available.forEach((email) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.role = 'option';
+          button.className = 'flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-blue-50 hover:text-blue-800';
+          button.textContent = email;
+          button.addEventListener('click', () => {
+            addRecipient(email);
+            hideSuggestions();
+            input.focus();
+          });
+          suggestions.appendChild(button);
+        });
+        suggestions.classList.remove('hidden');
+      };
+
+      const loadContacts = async () => {
+        if (!senderInput) return;
+        const senderName = senderInput.value.trim();
+        if (!senderName) {
+          hideSuggestions();
+          return;
+        }
+        if (contactsController) contactsController.abort();
+        contactsController = new AbortController();
+        try {
+          const response = await fetch(`/share/contacts?sender_name=${encodeURIComponent(senderName)}`, {
+            headers: { Accept: 'application/json' },
+            signal: contactsController.signal,
+          });
+          if (!response.ok) {
+            hideSuggestions();
+            return;
+          }
+          const body = await response.json();
+          renderSuggestions(Array.isArray(body.contacts) ? body.contacts : []);
+        } catch (error) {
+          if (error.name !== 'AbortError') hideSuggestions();
+        }
+      };
+
+      const scheduleContactsLoad = () => {
+        window.clearTimeout(contactsTimer);
+        contactsTimer = window.setTimeout(loadContacts, 250);
+      };
+
+      const isOpen = () => !modal.classList.contains('hidden');
+      const openModal = () => {
+        lastFocused = document.activeElement;
+        modal.classList.remove('hidden');
+        document.body.classList.add('overflow-hidden');
+        window.setTimeout(() => {
+          const focusTarget = successMode
+            ? modal.querySelector('[data-share-close]')
+            : (senderInput && senderInput.value.trim() ? input : senderInput);
+          if (focusTarget && focusTarget.focus) focusTarget.focus();
+          if (!successMode) loadContacts();
+        }, 0);
+      };
+      const closeModal = () => {
+        modal.classList.add('hidden');
+        document.body.classList.remove('overflow-hidden');
+        hideSuggestions();
+        setClientError('');
+        cleanSuccessUrl();
+        if (lastFocused && lastFocused.focus) lastFocused.focus();
+      };
+
+      document.querySelectorAll('[data-share-open]').forEach((button) => {
+        button.addEventListener('click', openModal);
+      });
+      modal.querySelectorAll('[data-share-close]').forEach((button) => {
+        button.addEventListener('click', closeModal);
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && isOpen()) closeModal();
+      });
+
+      if (!successMode && field && input && chips && senderInput && form) {
+        field.addEventListener('click', () => input.focus());
+        chips.addEventListener('click', (event) => {
+          const button = event.target.closest('[data-recipient-remove]');
+          if (!button) return;
+          const chip = button.closest('[data-recipient-chip]');
+          if (chip) chip.remove();
+          scheduleContactsLoad();
+        });
+        input.addEventListener('keydown', (event) => {
+          if (['Enter', ',', ';', 'Tab'].includes(event.key) && input.value.trim()) {
+            event.preventDefault();
+            addTokensFromInput();
+            scheduleContactsLoad();
+          }
+          if (event.key === 'Backspace' && !input.value) {
+            const last = chips.querySelector('[data-recipient-chip]:last-of-type');
+            if (last) last.remove();
+            scheduleContactsLoad();
+          }
+        });
+        input.addEventListener('blur', () => {
+          addTokensFromInput();
+          scheduleContactsLoad();
+        });
+        input.addEventListener('paste', (event) => {
+          const text = event.clipboardData ? event.clipboardData.getData('text') : '';
+          if (!text || !splitPattern.test(text)) return;
+          event.preventDefault();
+          text.split(splitPattern).filter(Boolean).forEach(addRecipient);
+          scheduleContactsLoad();
+        });
+        input.addEventListener('focus', loadContacts);
+        senderInput.addEventListener('input', scheduleContactsLoad);
+        form.addEventListener('submit', (event) => {
+          const pendingValid = addTokensFromInput();
+          if (!pendingValid || hiddenInputs().length === 0) {
+            event.preventDefault();
+            if (hiddenInputs().length === 0) {
+              setClientError('Add at least one recipient email address.');
+            }
+            input.focus();
+          }
+        });
+      }
+
+      if (isOpen()) {
+        document.body.classList.add('overflow-hidden');
+        window.setTimeout(() => {
+          const focusTarget = successMode
+            ? modal.querySelector('[data-share-close]')
+            : (senderInput && senderInput.value.trim() ? input : senderInput);
+          if (focusTarget && focusTarget.focus) focusTarget.focus();
+          if (!successMode) loadContacts();
+        }, 0);
+      }
     })();
   </script>
 {% endblock %}
