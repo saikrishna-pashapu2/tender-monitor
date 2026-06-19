@@ -52,6 +52,8 @@ def test_tender_summary_from_orm() -> None:
     assert summary.matched_groups == ["esg"]
     assert summary.ai_relevance_score == 8
     assert summary.source_url == "https://goszakup.gov.kz/T-1"
+    assert summary.like_count == 0
+    assert summary.likes == []
 
 
 def test_feedback_create_validation() -> None:

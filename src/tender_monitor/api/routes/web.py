@@ -16,6 +16,7 @@ from tender_monitor.api.queries import (
     DEFAULT_SORT,
     TenderFilters,
     get_tender,
+    list_liked_tenders,
     list_related_tenders,
     list_sources,
     list_tenders,
@@ -31,6 +32,7 @@ from tender_monitor.api.templating import (
     templates,
 )
 from tender_monitor.core.models import Tender
+from tender_monitor.likes import like_tender, unlike_tender
 from tender_monitor.notifications.email import EmailSender, SMTPEmailSender
 from tender_monitor.notifications.share import (
     ShareRecipientFailure,
@@ -39,6 +41,7 @@ from tender_monitor.notifications.share import (
     normalize_sender_name,
     share_tender_by_email,
 )
+from tender_monitor.team import list_team_members, member_key_for
 
 router = APIRouter()
 
@@ -84,6 +87,14 @@ UZEX_DOCUMENT_TAB_ORDER = (
 
 def get_share_email_sender() -> EmailSender:
     return SMTPEmailSender()
+
+
+def _safe_next_url(value: str | None, *, fallback: str = "/") -> str:
+    if not value:
+        return fallback
+    if value.startswith("/") and not value.startswith("//"):
+        return value
+    return fallback
 
 
 def _rows_from_keys(
@@ -1509,6 +1520,7 @@ async def tender_list(
 
     result = await list_tenders(session, filters, sort_key, safe_page, safe_per_page)
     sources_rows = await list_sources(session)
+    team_members = await list_team_members(session)
     total_tenders, total_sources, last_seen = await overall_counters(session)
 
     template = (
@@ -1524,7 +1536,46 @@ async def tender_list(
         "pages": total_pages(result.total, safe_per_page),
         "filters": filters,
         "sources": sources_rows,
+        "team_members": team_members,
         "sort": sort_key,
+        "total_tenders": total_tenders,
+        "total_sources": total_sources,
+        "last_seen": last_seen,
+    }
+    return templates.TemplateResponse(request, template, context)
+
+
+@router.get("/liked", response_class=HTMLResponse)
+async def liked_tender_list(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    q: str | None = None,
+    page: int = 1,
+    per_page: int = DEFAULT_PER_PAGE,
+) -> HTMLResponse:
+    safe_page, safe_per_page = normalize_pagination(page, per_page)
+    result = await list_liked_tenders(
+        session,
+        q=q,
+        page=safe_page,
+        per_page=safe_per_page,
+    )
+    team_members = await list_team_members(session)
+    total_tenders, total_sources, last_seen = await overall_counters(session)
+
+    template = (
+        "tenders/_liked_results.html"
+        if request.headers.get("HX-Request")
+        else "tenders/liked.html"
+    )
+    context = {
+        "tenders": result.rows,
+        "total": result.total,
+        "page": safe_page,
+        "per_page": safe_per_page,
+        "pages": total_pages(result.total, safe_per_page),
+        "q": q.strip() if q and q.strip() else "",
+        "team_members": team_members,
         "total_tenders": total_tenders,
         "total_sources": total_sources,
         "last_seen": last_seen,
@@ -1546,6 +1597,7 @@ async def _build_tender_detail_context(
     share_failed_recipients: list[ShareRecipientFailure] | None = None,
 ) -> dict[str, object]:
     total_tenders, total_sources, last_seen = await overall_counters(session)
+    team_members = await list_team_members(session)
 
     lots: list[dict[str, object]] = []
     documents: list[dict[str, object]] = []
@@ -1646,6 +1698,7 @@ async def _build_tender_detail_context(
         "tendersinfo_view": tendersinfo_view,
         "uzbekistan_tenders_view": uzbekistan_tenders_view,
         "related": related,
+        "team_members": team_members,
         "share_sent": share_sent,
         "share_error": share_error,
         "share_modal_open": share_modal_open,
@@ -1681,6 +1734,42 @@ async def tender_detail(
         request,
         "tenders/detail.html",
         context,
+    )
+
+
+@router.post("/tenders/{tender_id}/likes", response_class=HTMLResponse)
+async def update_tender_like(
+    tender_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    member_name: str = Form(""),
+    intent: str = Form("like"),
+    next_url: str = Form("/"),
+) -> RedirectResponse:
+    try:
+        if intent == "unlike":
+            unlike_result = await unlike_tender(
+                session,
+                tender_id=tender_id,
+                member_key=member_key_for(member_name),
+            )
+            tender_missing = unlike_result is None
+        else:
+            like_result = await like_tender(
+                session,
+                tender_id=tender_id,
+                member_name=member_name,
+            )
+            tender_missing = like_result is None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if tender_missing:
+        raise HTTPException(status_code=404, detail="Tender not found")
+
+    await session.commit()
+    return RedirectResponse(
+        url=_safe_next_url(next_url, fallback=f"/tenders/{tender_id}"),
+        status_code=303,
     )
 
 

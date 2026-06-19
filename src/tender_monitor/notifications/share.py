@@ -20,6 +20,11 @@ from tender_monitor.notifications.email import (
     SMTPEmailSender,
     render_share_email,
 )
+from tender_monitor.team import (
+    member_key_for,
+    normalize_team_member_name,
+    upsert_team_member,
+)
 
 logger = get_logger(__name__)
 
@@ -49,12 +54,14 @@ class TenderShareSendError(RuntimeError):
 
 
 def normalize_sender_name(value: str) -> str | None:
-    sender_name = " ".join(value.strip().split())
-    return sender_name or None
+    try:
+        return normalize_team_member_name(value)
+    except ValueError:
+        return None
 
 
 def sender_key_for(sender_name: str) -> str:
-    return " ".join(sender_name.strip().split()).casefold()
+    return member_key_for(sender_name)
 
 
 def normalize_share_email(value: str) -> str | None:
@@ -173,6 +180,7 @@ async def share_tender_by_email(
     if invalid or not normalized_recipients:
         return ShareTenderResult(invalid=invalid)
 
+    await upsert_team_member(session, normalized_sender_name)
     await _upsert_share_contacts(
         session,
         sender_name=normalized_sender_name,

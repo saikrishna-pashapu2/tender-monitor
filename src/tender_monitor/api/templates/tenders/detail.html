@@ -116,6 +116,7 @@
                   <i data-lucide="share-2" class="h-4 w-4"></i>
                   Share
                 </button>
+                {% include "tenders/_like_control.html" %}
               </div>
             </div>
           </div>
@@ -263,9 +264,11 @@
                 <input id="share-sender-name"
                        name="sender_name"
                        type="text"
+                       list="team-member-names"
                        value="{{ share_sender_name or '' }}"
                        required
                        autocomplete="name"
+                       placeholder="Select or add a name"
                        class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-100 placeholder:text-slate-400 focus:border-blue-500 focus:ring-blue-500" />
               </div>
 

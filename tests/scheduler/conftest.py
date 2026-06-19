@@ -32,8 +32,8 @@ async def _truncate_tables(test_database_url: str) -> AsyncIterator[None]:
     try:
         async with engine.begin() as conn:
             await conn.exec_driver_sql(
-                "TRUNCATE notification_logs, feedback, tenders, sources "
-                "RESTART IDENTITY CASCADE"
+                "TRUNCATE notification_logs, tender_likes, team_members, feedback, "
+                "tenders, sources RESTART IDENTITY CASCADE"
             )
         yield
     finally:

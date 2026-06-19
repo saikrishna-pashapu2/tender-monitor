@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Liked tenders · Tender Monitor{% endblock %}
+{% block page_shell_class %}max-w-[96rem]{% endblock %}
+{% block page_main_shell_class %}max-w-[96rem]{% endblock %}
+{% block page_footer_shell_class %}max-w-[96rem]{% endblock %}
+
+{% block content %}
+  <section class="mb-6 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
+    <div class="bg-[radial-gradient(circle_at_top_left,_rgba(244,63,94,0.12),_transparent_34%),linear-gradient(135deg,_#ffffff,_#f8fafc)] px-5 py-6 sm:px-7">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div class="mb-2 inline-flex items-center gap-2 rounded-full border border-rose-100 bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-600">
+            <i data-lucide="heart" class="h-3.5 w-3.5 fill-rose-500"></i>
+            Team picks
+          </div>
+          <h1 class="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">Liked tenders</h1>
+          <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            A shared shortlist of tenders your team marked as useful.
+          </p>
+        </div>
+        <a href="/"
+           class="inline-flex w-fit items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm shadow-slate-100 transition hover:border-blue-200 hover:text-blue-700">
+          <i data-lucide="radar" class="h-4 w-4"></i>
+          All tenders
+        </a>
+      </div>
+
+      <div class="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_12rem]">
+        <div class="relative">
+          <i data-lucide="search" class="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"></i>
+          <input id="liked-search"
+                 type="search"
+                 name="q"
+                 value="{{ q or '' }}"
+                 placeholder="Search liked title or buyer..."
+                 hx-get="/liked"
+                 hx-target="#liked-results"
+                 hx-push-url="true"
+                 hx-trigger="keyup changed delay:300ms, search"
+                 hx-include="#liked-search, #liked-per-page"
+                 class="w-full rounded-2xl border border-slate-200 bg-white/95 py-3 pl-11 pr-4 text-sm text-slate-900 shadow-sm shadow-slate-100 placeholder:text-slate-400 focus:border-rose-400 focus:ring-rose-400" />
+        </div>
+        <form method="get" action="/liked" class="flex items-center gap-2">
+          <input type="hidden" name="q" value="{{ q or '' }}" />
+          <select id="liked-per-page"
+                  name="per_page"
+                  onchange="this.form.submit()"
+                  class="w-full rounded-2xl border border-slate-200 bg-white/95 px-3 py-3 text-sm text-slate-900 shadow-sm shadow-slate-100 focus:border-rose-400 focus:ring-rose-400">
+            {% for size in [10, 25, 50, 100] %}
+              <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} / page</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section id="liked-results">
+    {% include "tenders/_liked_results.html" %}
+  </section>
+{% endblock %}

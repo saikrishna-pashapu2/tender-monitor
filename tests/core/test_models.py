@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tender_monitor.core.enums import Country, TenderStatus
-from tender_monitor.core.models import Source, Tender
+from tender_monitor.core.models import Source, TeamMember, Tender, TenderLike
 
 
 async def _make_source(session: AsyncSession, name: str = "goszakup") -> Source:
@@ -129,3 +129,54 @@ async def test_canonical_id_self_ref(db_session: AsyncSession) -> None:
     assert duplicate.canonical_id == primary.id
     assert duplicate.canonical is not None
     assert duplicate.canonical.id == primary.id
+
+
+async def test_tender_like_unique_per_team_member(db_session: AsyncSession) -> None:
+    await _make_source(db_session)
+
+    tender = Tender(
+        source_name="goszakup",
+        external_id="T-LIKE",
+        title="Liked tender",
+        country=Country.KZ,
+        source_url="https://example.com/liked",
+        raw_json={},
+    )
+    member = TeamMember(display_name="Sai Kumar", member_key="sai kumar")
+    db_session.add_all([tender, member])
+    await db_session.flush()
+
+    db_session.add(TenderLike(tender_id=tender.id, team_member_id=member.id))
+    await db_session.flush()
+
+    db_session.add(TenderLike(tender_id=tender.id, team_member_id=member.id))
+    with pytest.raises(IntegrityError):
+        await db_session.flush()
+
+
+async def test_tender_like_cascades_when_tender_deleted(
+    db_session: AsyncSession,
+) -> None:
+    await _make_source(db_session)
+
+    tender = Tender(
+        source_name="goszakup",
+        external_id="T-CASCADE",
+        title="Cascade tender",
+        country=Country.KZ,
+        source_url="https://example.com/cascade",
+        raw_json={},
+    )
+    member = TeamMember(display_name="Aisha", member_key="aisha")
+    db_session.add_all([tender, member])
+    await db_session.flush()
+    db_session.add(TenderLike(tender_id=tender.id, team_member_id=member.id))
+    await db_session.flush()
+
+    await db_session.delete(tender)
+    await db_session.flush()
+
+    likes = (await db_session.execute(select(TenderLike))).scalars().all()
+    members = (await db_session.execute(select(TeamMember))).scalars().all()
+    assert likes == []
+    assert members == [member]

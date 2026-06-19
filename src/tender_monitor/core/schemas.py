@@ -50,6 +50,34 @@ class SourceRead(_ORMModel):
     updated_at: datetime
 
 
+class TeamMemberRead(_ORMModel):
+    id: UUID
+    display_name: str
+    member_key: str
+    created_at: datetime
+    updated_at: datetime
+    last_used_at: datetime
+    use_count: int
+
+
+class TenderLikeRead(_ORMModel):
+    id: UUID
+    tender_id: UUID
+    team_member_id: UUID
+    created_at: datetime
+    team_member: TeamMemberRead
+
+
+class TenderLikeCreate(BaseModel):
+    member_name: str = Field(min_length=1, max_length=256)
+
+
+class TenderLikeState(BaseModel):
+    tender_id: UUID
+    like_count: int
+    likes: list[TenderLikeRead]
+
+
 class TenderSummary(_ORMModel):
     id: UUID
     source_name: str
@@ -73,6 +101,8 @@ class TenderSummary(_ORMModel):
     ai_relevance_score: int | None
     source_url: str
     published_at: datetime | None
+    like_count: int = 0
+    likes: list[TenderLikeRead] = Field(default_factory=list)
 
 
 class TenderRead(_ORMModel):
@@ -107,6 +137,8 @@ class TenderRead(_ORMModel):
     last_changed_at: datetime
     change_log: list[dict[str, Any]]
     is_active: bool
+    like_count: int = 0
+    likes: list[TenderLikeRead] = Field(default_factory=list)
 
 
 class FeedbackRead(_ORMModel):
@@ -178,6 +210,10 @@ __all__ = [
     "FeedbackRead",
     "NotificationLogRead",
     "SourceRead",
+    "TeamMemberRead",
+    "TenderLikeCreate",
+    "TenderLikeRead",
+    "TenderLikeState",
     "TenderRead",
     "TenderSummary",
     "TenderUpsert",

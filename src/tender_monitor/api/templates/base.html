@@ -30,6 +30,11 @@
             ·
             <span class="font-medium text-gray-700">{{ total_sources or 0 }}</span> sources
           </div>
+          <a href="/liked"
+             class="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-rose-700">
+            <i data-lucide="heart" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Liked</span>
+          </a>
           <a href="/settings/recipients"
              class="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-blue-700">
             <i data-lucide="settings" class="w-4 h-4"></i>
@@ -42,6 +47,14 @@
     <main class="flex-1 {% block page_main_shell_class %}max-w-7xl{% endblock %} w-full mx-auto px-4 sm:px-6 py-6">
       {% block content %}{% endblock %}
     </main>
+
+    {% if team_members is defined %}
+      <datalist id="team-member-names">
+        {% for member in team_members %}
+          <option value="{{ member.display_name }}"></option>
+        {% endfor %}
+      </datalist>
+    {% endif %}
 
     <footer class="border-t border-gray-200 bg-white">
       <div class="{% block page_footer_shell_class %}max-w-7xl{% endblock %} mx-auto px-4 sm:px-6 py-3 text-xs text-gray-500 flex flex-wrap justify-between gap-2">

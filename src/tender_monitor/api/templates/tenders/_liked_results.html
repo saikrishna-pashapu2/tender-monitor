@@ -1,0 +1,64 @@
+<div class="mb-4 flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white px-4 py-3 shadow-sm shadow-slate-100 sm:flex-row sm:items-center sm:justify-between">
+  <div class="text-sm text-slate-500">
+    {% if total == 0 %}
+      No liked tenders{% if q %} match this search{% endif %}.
+    {% else %}
+      Showing
+      <span class="font-semibold text-slate-900">{{ tenders|length }}</span>
+      of <span class="font-semibold text-slate-900">{{ "{:,}".format(total) }}</span> liked tenders
+      <span class="text-slate-400">· recently liked first</span>
+    {% endif %}
+  </div>
+  {% if q %}
+    <a href="/liked"
+       class="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-rose-700">
+      <i data-lucide="x" class="h-4 w-4"></i>
+      Clear search
+    </a>
+  {% endif %}
+</div>
+
+{% if tenders %}
+  <div class="grid gap-4 lg:gap-5">
+    {% for tender in tenders %}
+      {% include "tenders/_card.html" %}
+    {% endfor %}
+  </div>
+
+  {% if pages > 1 %}
+    <nav class="mt-6 flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm shadow-slate-100 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        {% if page > 1 %}
+          <a href="/liked?q={{ q|urlencode }}&per_page={{ per_page }}&page={{ page - 1 }}"
+             class="rounded-2xl border border-slate-200 px-3 py-2 text-slate-700 transition hover:bg-slate-50">
+            Prev
+          </a>
+        {% else %}
+          <span class="rounded-2xl border border-slate-100 px-3 py-2 text-slate-300">Prev</span>
+        {% endif %}
+      </div>
+      <div class="text-slate-600">Page {{ page }} of {{ pages }}</div>
+      <div>
+        {% if page < pages %}
+          <a href="/liked?q={{ q|urlencode }}&per_page={{ per_page }}&page={{ page + 1 }}"
+             class="rounded-2xl border border-slate-200 px-3 py-2 text-slate-700 transition hover:bg-slate-50">
+            Next
+          </a>
+        {% else %}
+          <span class="rounded-2xl border border-slate-100 px-3 py-2 text-slate-300">Next</span>
+        {% endif %}
+      </div>
+    </nav>
+  {% endif %}
+{% else %}
+  <div class="rounded-[28px] border border-dashed border-slate-300 bg-white p-12 text-center shadow-sm shadow-slate-100">
+    <i data-lucide="heart" class="mx-auto mb-3 h-8 w-8 text-slate-300"></i>
+    <p class="mb-3 text-slate-600">
+      {% if q %}No liked tenders match this search.{% else %}No liked tenders yet.{% endif %}
+    </p>
+    <a href="/"
+       class="inline-block rounded-2xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+      Browse tenders
+    </a>
+  </div>
+{% endif %}

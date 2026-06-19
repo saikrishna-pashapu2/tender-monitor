@@ -70,6 +70,7 @@ def test_list_endpoint_returns_200_html(client: TestClient) -> None:
     assert resp.headers["content-type"].startswith("text/html")
     assert "<html" in resp.text.lower()
     assert "Tender Monitor" in resp.text
+    assert "Liked" in resp.text
 
 
 def test_list_endpoint_htmx_returns_partial(client: TestClient) -> None:
@@ -120,9 +121,11 @@ def test_detail_endpoint_renders_share_button_and_modal(client: TestClient) -> N
     resp = client.get(f"/tenders/{tender_id}")
     assert resp.status_code == 200
     assert 'data-share-open' in resp.text
+    assert 'data-like-control' in resp.text
     assert 'id="share-modal"' in resp.text
     assert f'action="/tenders/{tender_id}/share"' in resp.text
     assert 'name="sender_name"' in resp.text
+    assert 'list="team-member-names"' in resp.text
     assert 'name="recipients"' in resp.text
     assert "Share" in resp.text
 
@@ -268,10 +271,134 @@ def test_share_contacts_returns_contacts_for_normalized_sender(
         "analyst@example.com",
         "manager@example.com",
     }
+    members = client.get("/api/team-members")
+    assert members.status_code == 200
+    assert [member["display_name"] for member in members.json()] == ["Sai Kumar"]
+
+    detail = client.get(f"/tenders/{tender_id}")
+    assert detail.status_code == 200
+    assert '<option value="Sai Kumar">' in detail.text
 
     other = client.get("/share/contacts?sender_name=Someone%20Else")
     assert other.status_code == 200
     assert other.json()["contacts"] == []
+
+
+def test_html_like_tender_creates_member_and_redirects(
+    client: TestClient,
+) -> None:
+    tender_id = _credit_rating_tender_id(client)
+    resp = client.post(
+        f"/tenders/{tender_id}/likes",
+        data={"member_name": "Sai Kumar", "next_url": "/liked"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/liked"
+
+    liked = client.get("/liked")
+    assert liked.status_code == 200
+    assert "Credit rating audit services" in liked.text
+    assert "Sai Kumar" in liked.text
+    assert "recently liked first" in liked.text
+
+    members = client.get("/api/team-members")
+    assert members.status_code == 200
+    assert members.json()[0]["member_key"] == "sai kumar"
+
+
+def test_html_like_tender_reuses_member_and_can_unlike(
+    client: TestClient,
+) -> None:
+    tender_id = _credit_rating_tender_id(client)
+    first = client.post(
+        f"/tenders/{tender_id}/likes",
+        data={"member_name": "Sai Kumar", "next_url": f"/tenders/{tender_id}"},
+        follow_redirects=False,
+    )
+    second = client.post(
+        f"/tenders/{tender_id}/likes",
+        data={"member_name": " sai   kumar ", "next_url": f"/tenders/{tender_id}"},
+        follow_redirects=False,
+    )
+    assert first.status_code == 303
+    assert second.status_code == 303
+
+    detail = client.get(f"/api/tenders/{tender_id}")
+    assert detail.status_code == 200
+    assert detail.json()["like_count"] == 1
+    assert len(detail.json()["likes"]) == 1
+
+    unlike = client.post(
+        f"/tenders/{tender_id}/likes",
+        data={
+            "member_name": "Sai Kumar",
+            "intent": "unlike",
+            "next_url": f"/tenders/{tender_id}",
+        },
+        follow_redirects=False,
+    )
+    assert unlike.status_code == 303
+    liked = client.get("/api/liked-tenders")
+    assert liked.status_code == 200
+    assert liked.json()["total"] == 0
+
+
+def test_like_tender_returns_404_for_unknown_tender(client: TestClient) -> None:
+    resp = client.post(
+        f"/tenders/{uuid4()}/likes",
+        data={"member_name": "Sai Kumar"},
+    )
+    assert resp.status_code == 404
+
+
+def test_liked_page_includes_unmatched_liked_tenders(client: TestClient) -> None:
+    tender_id = _unmatched_goszakup_tender_id(client)
+    resp = client.post(
+        f"/tenders/{tender_id}/likes",
+        data={"member_name": "Aisha", "next_url": "/liked"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    liked = client.get("/liked")
+    assert liked.status_code == 200
+    assert "Office supplies for the ministry" in liked.text
+    assert "Aisha" in liked.text
+
+
+def test_json_like_endpoints(client: TestClient) -> None:
+    tender_id = _credit_rating_tender_id(client)
+    created = client.post(
+        f"/api/tenders/{tender_id}/likes",
+        json={"member_name": "Aisha"},
+    )
+    assert created.status_code == 200
+    state = created.json()
+    assert state["tender_id"] == tender_id
+    assert state["like_count"] == 1
+    assert state["likes"][0]["team_member"]["display_name"] == "Aisha"
+
+    liked = client.get("/api/liked-tenders")
+    assert liked.status_code == 200
+    assert liked.json()["total"] == 1
+    assert liked.json()["tenders"][0]["like_count"] == 1
+
+    members = client.get("/api/team-members")
+    assert members.status_code == 200
+    assert members.json()[0]["member_key"] == "aisha"
+
+    deleted = client.delete(f"/api/tenders/{tender_id}/likes/aisha")
+    assert deleted.status_code == 200
+    assert deleted.json()["like_count"] == 0
+
+
+def test_json_like_returns_404_for_unknown_tender(client: TestClient) -> None:
+    resp = client.post(
+        f"/api/tenders/{uuid4()}/likes",
+        json={"member_name": "Aisha"},
+    )
+    assert resp.status_code == 404
 
 
 def test_detail_endpoint_renders_goszakup_source_layout(client: TestClient) -> None:
@@ -547,6 +674,15 @@ def _credit_rating_tender_id(client: TestClient) -> str:
         if entry["external_id"] == "g-1":
             return entry["id"]
     raise AssertionError("seeded credit-rating tender g-1 was not returned")
+
+
+def _unmatched_goszakup_tender_id(client: TestClient) -> str:
+    resp = client.get("/api/tenders?source=goszakup&matched=all&per_page=100")
+    resp.raise_for_status()
+    for entry in resp.json()["tenders"]:
+        if entry["external_id"] == "g-5":
+            return entry["id"]
+    raise AssertionError("seeded unmatched tender g-5 was not returned")
 
 
 def _xt_xarid_tender_id(client: TestClient) -> str:

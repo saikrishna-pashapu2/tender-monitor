@@ -209,6 +209,15 @@ class Tender(Base):
     notifications: Mapped[list[NotificationLog]] = relationship(
         back_populates="tender", cascade="all, delete-orphan"
     )
+    likes: Mapped[list[TenderLike]] = relationship(
+        back_populates="tender",
+        cascade="all, delete-orphan",
+        order_by="TenderLike.created_at.desc()",
+    )
+
+    @property
+    def like_count(self) -> int:
+        return len(self.likes)
 
 
 class Feedback(Base):
@@ -338,11 +347,87 @@ class ShareContact(Base):
     )
 
 
+class TeamMember(Base):
+    """Internal teammate identity used by likes and share sender history."""
+
+    __tablename__ = "team_members"
+    __table_args__ = (
+        UniqueConstraint("member_key", name="uq_team_members_member_key"),
+        Index("ix_team_members_member_key", "member_key"),
+        Index("ix_team_members_last_used_at", "last_used_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    display_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    member_key: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    last_used_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    use_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="1"
+    )
+
+    likes: Mapped[list[TenderLike]] = relationship(
+        back_populates="team_member",
+        cascade="all, delete-orphan",
+        order_by="TenderLike.created_at.desc()",
+    )
+
+
+class TenderLike(Base):
+    """A single teammate's like on a tender."""
+
+    __tablename__ = "tender_likes"
+    __table_args__ = (
+        UniqueConstraint(
+            "tender_id",
+            "team_member_id",
+            name="uq_tender_likes_tender_member",
+        ),
+        Index("ix_tender_likes_tender_id", "tender_id"),
+        Index("ix_tender_likes_team_member_id", "team_member_id"),
+        Index("ix_tender_likes_created_at", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    tender_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("tenders.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    team_member_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("team_members.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    tender: Mapped[Tender] = relationship(back_populates="likes")
+    team_member: Mapped[TeamMember] = relationship(back_populates="likes")
+
+
 __all__ = [
     "EmailRecipient",
     "Feedback",
     "NotificationLog",
     "ShareContact",
     "Source",
+    "TeamMember",
     "Tender",
+    "TenderLike",
 ]

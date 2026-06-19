@@ -1,0 +1,88 @@
+{% set liked_keys = tender.likes|like_member_keys %}
+{% set liked_names = tender.likes|like_names %}
+{% set current_next_url %}{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}{% endset %}
+
+<div class="relative" data-like-control>
+  <details class="group relative">
+    <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-2xl border px-3 py-2 text-sm font-medium shadow-sm transition
+                    {% if liked_names %}border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100{% else %}border-slate-200 bg-white text-slate-600 hover:border-rose-200 hover:text-rose-700{% endif %}">
+      <i data-lucide="heart"
+         class="h-4 w-4 {% if liked_names %}fill-rose-500 text-rose-600{% endif %}"></i>
+      <span>{{ liked_names|length }}</span>
+      <i data-lucide="chevron-down" class="h-3.5 w-3.5 text-current opacity-60"></i>
+    </summary>
+
+    <div class="absolute right-0 z-30 mt-2 w-72 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/80">
+      <div class="border-b border-slate-100 px-3 py-3">
+        <div class="flex items-center justify-between gap-3">
+          <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Liked by</div>
+          {% if liked_names %}
+            <span class="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700">
+              {{ liked_names|length }}
+            </span>
+          {% endif %}
+        </div>
+        {% if liked_names %}
+          <p class="mt-2 text-sm text-slate-700">{{ liked_names|join(", ") }}</p>
+        {% else %}
+          <p class="mt-2 text-sm text-slate-500">No one has liked this tender yet.</p>
+        {% endif %}
+      </div>
+
+      <div class="max-h-56 overflow-y-auto py-1">
+        {% if team_members %}
+          {% for member in team_members %}
+            {% set member_liked = member.member_key in liked_keys %}
+            <form method="post" action="/tenders/{{ tender.id }}/likes">
+              <input type="hidden" name="member_name" value="{{ member.display_name }}" />
+              <input type="hidden" name="intent" value="{% if member_liked %}unlike{% else %}like{% endif %}" />
+              <input type="hidden" name="next_url" value="{{ current_next_url|trim }}" />
+              <button type="submit"
+                      class="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm transition
+                             {% if member_liked %}bg-rose-50 text-rose-800 hover:bg-rose-100{% else %}text-slate-700 hover:bg-slate-50{% endif %}">
+                <span class="truncate">{{ member.display_name }}</span>
+                {% if member_liked %}
+                  <span class="inline-flex items-center gap-1 text-xs font-medium text-rose-700">
+                    <i data-lucide="heart-off" class="h-3.5 w-3.5"></i>
+                    Unlike
+                  </span>
+                {% else %}
+                  <span class="inline-flex items-center gap-1 text-xs font-medium text-slate-400">
+                    <i data-lucide="heart" class="h-3.5 w-3.5"></i>
+                    Like
+                  </span>
+                {% endif %}
+              </button>
+            </form>
+          {% endfor %}
+        {% else %}
+          <div class="px-3 py-3 text-sm text-slate-500">
+            Add the first teammate name below.
+          </div>
+        {% endif %}
+      </div>
+
+      <form method="post" action="/tenders/{{ tender.id }}/likes"
+            class="border-t border-slate-100 bg-slate-50 p-3">
+        <input type="hidden" name="intent" value="like" />
+        <input type="hidden" name="next_url" value="{{ current_next_url|trim }}" />
+        <label class="mb-1.5 block text-xs font-medium text-slate-500" for="like-name-{{ tender.id }}">
+          Add name
+        </label>
+        <div class="flex items-center gap-2">
+          <input id="like-name-{{ tender.id }}"
+                 name="member_name"
+                 type="text"
+                 list="team-member-names"
+                 placeholder="Teammate name"
+                 class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-rose-400 focus:ring-rose-400" />
+          <button type="submit"
+                  class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-600 text-white transition hover:bg-rose-700"
+                  aria-label="Like as new teammate">
+            <i data-lucide="plus" class="h-4 w-4"></i>
+          </button>
+        </div>
+      </form>
+    </div>
+  </details>
+</div>

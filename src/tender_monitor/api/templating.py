@@ -273,6 +273,26 @@ def pretty_list_of_scalars(value: list[Any]) -> str:
     return ", ".join(pretty_scalar(item) for item in value)
 
 
+def like_member_keys(value: Any) -> list[str]:
+    keys: list[str] = []
+    for like in value or []:
+        member = getattr(like, "team_member", None)
+        key = getattr(member, "member_key", None)
+        if isinstance(key, str):
+            keys.append(key)
+    return keys
+
+
+def like_names(value: Any) -> list[str]:
+    names: list[str] = []
+    for like in value or []:
+        member = getattr(like, "team_member", None)
+        name = getattr(member, "display_name", None)
+        if isinstance(name, str):
+            names.append(name)
+    return names
+
+
 def build_templates() -> Jinja2Templates:
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     env = templates.env
@@ -289,6 +309,8 @@ def build_templates() -> Jinja2Templates:
     env.filters["humanize_key"] = humanize_key
     env.filters["pretty_scalar"] = pretty_scalar
     env.filters["pretty_list_of_scalars"] = pretty_list_of_scalars
+    env.filters["like_member_keys"] = like_member_keys
+    env.filters["like_names"] = like_names
     env.tests["scalar"] = is_scalar
     env.tests["list_of_scalars"] = is_list_of_scalars
     return templates
@@ -311,6 +333,8 @@ __all__ = [
     "is_list_of_scalars",
     "is_scalar",
     "isoformat",
+    "like_member_keys",
+    "like_names",
     "pretty_amount",
     "pretty_amount_with_usd",
     "pretty_json",

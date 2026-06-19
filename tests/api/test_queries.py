@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -10,12 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tender_monitor.api.queries import (
     TenderFilters,
     get_tender,
+    list_liked_tenders,
     list_related_tenders,
     list_sources,
     list_tenders,
 )
 from tender_monitor.core.enums import Country
-from tender_monitor.core.models import Tender
+from tender_monitor.core.models import TeamMember, Tender, TenderLike
 
 
 async def test_list_tenders_no_filters_returns_all_paged(
@@ -289,6 +290,76 @@ async def test_list_related_tenders_includes_unmatched(
     assert len(related) == 5  # 6 goszakup rows, minus the excluded one
     assert any(r.matched_groups == [] for r in related)
     assert any(r.matched_groups != [] for r in related)
+
+
+async def test_list_liked_tenders_orders_by_recent_like(
+    seeded_session: AsyncSession,
+) -> None:
+    rows = (
+        await seeded_session.execute(
+            select(Tender)
+            .where(Tender.source_name == "goszakup")
+            .where(Tender.external_id.in_(["g-1", "g-5"]))
+            .order_by(Tender.external_id.asc())
+        )
+    ).scalars().all()
+    member = TeamMember(display_name="Sai Kumar", member_key="sai kumar")
+    seeded_session.add(member)
+    await seeded_session.flush()
+    seeded_session.add_all(
+        [
+            TenderLike(
+                tender_id=rows[0].id,
+                team_member_id=member.id,
+                created_at=datetime(2026, 5, 20, 10, 0, tzinfo=UTC),
+            ),
+            TenderLike(
+                tender_id=rows[1].id,
+                team_member_id=member.id,
+                created_at=datetime(2026, 5, 20, 11, 0, tzinfo=UTC),
+            ),
+        ]
+    )
+    await seeded_session.flush()
+
+    result = await list_liked_tenders(seeded_session)
+
+    assert result.total == 2
+    assert [row.external_id for row in result.rows] == ["g-5", "g-1"]
+    assert result.rows[0].likes[0].team_member.display_name == "Sai Kumar"
+
+
+async def test_list_liked_tenders_searches_title_and_buyer(
+    seeded_session: AsyncSession,
+) -> None:
+    rows = (
+        await seeded_session.execute(
+            select(Tender)
+            .where(Tender.external_id.in_(["g-1", "x-1"]))
+            .order_by(Tender.external_id.asc())
+        )
+    ).scalars().all()
+    member = TeamMember(display_name="Aisha", member_key="aisha")
+    seeded_session.add(member)
+    await seeded_session.flush()
+    for index, row in enumerate(rows):
+        seeded_session.add(
+            TenderLike(
+                tender_id=row.id,
+                team_member_id=member.id,
+                created_at=datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
+                + timedelta(minutes=index),
+            )
+        )
+    await seeded_session.flush()
+
+    title_result = await list_liked_tenders(seeded_session, q="Sustainability")
+    buyer_result = await list_liked_tenders(seeded_session, q="National Bank")
+
+    assert title_result.total == 1
+    assert title_result.rows[0].external_id == "x-1"
+    assert buyer_result.total == 1
+    assert buyer_result.rows[0].external_id == "g-1"
 
 
 async def test_list_sources_ordered_by_display_name(

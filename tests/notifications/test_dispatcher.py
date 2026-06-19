@@ -25,6 +25,7 @@ from tender_monitor.core.models import (
     NotificationLog,
     ShareContact,
     Source,
+    TeamMember,
     Tender,
 )
 from tender_monitor.notifications.dispatcher import dispatch_for_tender
@@ -49,8 +50,8 @@ class RecordingSender(EmailSender):  # type: ignore[misc]
 async def _truncate_tables(test_database_url: str) -> AsyncIterator[None]:
     engine = create_async_engine(test_database_url, future=True)
     truncate_sql = (
-        "TRUNCATE notification_logs, share_contacts, feedback, tenders, sources, "
-        "email_recipients RESTART IDENTITY CASCADE"
+        "TRUNCATE notification_logs, share_contacts, tender_likes, team_members, "
+        "feedback, tenders, sources, email_recipients RESTART IDENTITY CASCADE"
     )
     try:
         async with engine.begin() as conn:
@@ -317,6 +318,7 @@ async def test_share_tender_sends_to_arbitrary_recipients_and_logs_success(
         logs = (await session.execute(select(NotificationLog))).scalars().all()
         recipients = (await session.execute(select(EmailRecipient))).scalars().all()
         contacts = (await session.execute(select(ShareContact))).scalars().all()
+        members = (await session.execute(select(TeamMember))).scalars().all()
     assert len(logs) == 2
     assert {log.recipient for log in logs} == {
         "analyst@example.com",
@@ -328,6 +330,9 @@ async def test_share_tender_sends_to_arbitrary_recipients_and_logs_success(
         "manager@example.com",
     }
     assert {contact.sender_key for contact in contacts} == {"sai kumar"}
+    assert [(member.display_name, member.member_key) for member in members] == [
+        ("Sai Kumar", "sai kumar")
+    ]
     assert recipients == []
 
 
@@ -446,6 +451,9 @@ async def test_share_tender_upserts_contacts_per_sender_name(
             )
         ).scalars().all()
         recipients = (await session.execute(select(EmailRecipient))).scalars().all()
+        members = (
+            await session.execute(select(TeamMember).order_by(TeamMember.member_key.asc()))
+        ).scalars().all()
 
     assert [(contact.sender_key, contact.email) for contact in contacts] == [
         ("other person", "analyst@example.com"),
@@ -453,6 +461,10 @@ async def test_share_tender_upserts_contacts_per_sender_name(
     ]
     sai_contact = next(contact for contact in contacts if contact.sender_key == "sai kumar")
     assert sai_contact.use_count == 2
+    assert [(member.member_key, member.use_count) for member in members] == [
+        ("other person", 1),
+        ("sai kumar", 2),
+    ]
     assert recipients == []
 
 
