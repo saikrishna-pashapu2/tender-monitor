@@ -166,8 +166,17 @@ def test_parse_iso_maybe_returns_none_on_garbage(text: str | None) -> None:
 
 
 def test_map_status_known_and_unknown() -> None:
+    assert STATUS_MAPPING["open"] is TenderStatus.open
     assert STATUS_MAPPING["docs_objections"] is TenderStatus.announced
+    assert STATUS_MAPPING["close"] is TenderStatus.closed
+    assert STATUS_MAPPING["check_docs"] is TenderStatus.closed
+    assert STATUS_MAPPING["check_affilation_and_debts"] is TenderStatus.closed
+    assert STATUS_MAPPING["cancel"] is TenderStatus.cancelled
+    assert STATUS_MAPPING["not_realized"] is TenderStatus.cancelled
+    assert map_status("open") is TenderStatus.open
     assert map_status("docs_objections") is TenderStatus.announced
+    assert map_status("close") is TenderStatus.closed
+    assert map_status("cancel") is TenderStatus.cancelled
     assert map_status("brand_new_value") is TenderStatus.unknown
     assert map_status("") is TenderStatus.unknown
     assert map_status(None) is TenderStatus.unknown

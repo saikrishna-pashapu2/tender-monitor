@@ -81,7 +81,15 @@ def _detail_html(
     starts: str = "2026-05-18",
     ends: str = "2026-05-19",
     buyer: str = "National Road Agency",
+    price: str = "1500",
+    price_currency: str = "USD",
+    visible_value: str | None = None,
 ) -> str:
+    value_row = (
+        f"<li><strong>Tender Value: </strong> {visible_value}</li>"
+        if visible_value is not None
+        else ""
+    )
     return f"""
     <html>
       <head>
@@ -94,8 +102,8 @@ def _detail_html(
           "identifier": "{identifier}",
           "availabilityStarts": "{starts}",
           "availabilityEnds": "{ends}",
-          "price": "1500",
-          "priceCurrency": "USD",
+          "price": "{price}",
+          "priceCurrency": "{price_currency}",
           "offeredBy": {{
             "@type": "Organization",
             "name": "{buyer}"
@@ -103,7 +111,9 @@ def _detail_html(
         }}
         </script>
       </head>
-      <body></body>
+      <body>
+        <ul>{value_row}</ul>
+      </body>
     </html>
     """
 
@@ -153,6 +163,9 @@ def test_parse_value_text_with_currency() -> None:
         "UZS",
     )
     assert parse_value_text("208500 USD") == (Decimal("208500"), "USD")
+    assert parse_value_text("UZS 10000000") == (Decimal("10000000"), "UZS")
+    assert parse_value_text("UZS 10,000,000") == (Decimal("10000000"), "UZS")
+    assert parse_value_text("USD 1,500.25") == (Decimal("1500.25"), "USD")
 
 
 def test_parse_value_text_refer_document() -> None:
@@ -281,6 +294,20 @@ def test_parse_detail_page_extracts_jsonld_offer() -> None:
     assert parsed["detail_meta_description"].startswith("Tender for ESG")
 
 
+def test_parse_detail_page_extracts_visible_tender_value() -> None:
+    parsed = _parse_detail_page(
+        _detail_html(
+            price="0.00",
+            price_currency="USD",
+            visible_value="UZS 10000000",
+        )
+    )
+
+    assert parsed["detail_value_text"] == "UZS 10000000"
+    assert parsed["detail_price"] == "0.00"
+    assert parsed["detail_price_currency"] == "USD"
+
+
 # ---------------------------------------------------------------------------
 # Normalization
 # ---------------------------------------------------------------------------
@@ -335,6 +362,8 @@ def test_normalize_detail_description_matches_keyword_filter() -> None:
     upsert = UzbekistanTendersConnector()._normalize(raw)
 
     assert upsert.buyer_name == "National Road Agency"
+    assert upsert.value_amount == Decimal("1500")
+    assert upsert.value_currency == "USD"
     assert upsert.published_at == datetime(2026, 5, 18, 0, 0, 0, tzinfo=UTC)
     assert upsert.deadline_at == datetime(2026, 5, 19, 0, 0, 0, tzinfo=UTC)
     assert (
@@ -346,6 +375,52 @@ def test_normalize_detail_description_matches_keyword_filter() -> None:
     result = match_tender(upsert, config)
     assert result.is_match
     assert "esg" in result.matched_groups
+
+
+def test_normalize_prefers_visible_detail_value_over_jsonld_placeholder() -> None:
+    raw = {
+        "external_id": "143843907",
+        "title": "Construction of a Modern Hot Room",
+        "detail_url": "https://www.uzbekistantenders.com/tender/hot-room.php",
+        "deadline_text": "29 Jun 2026",
+        "value_text": None,
+        **_parse_detail_page(
+            _detail_html(
+                identifier="143843907",
+                price="0.00",
+                price_currency="USD",
+                visible_value="UZS 10000000",
+            )
+        ),
+    }
+
+    upsert = UzbekistanTendersConnector()._normalize(raw)
+
+    assert upsert.value_amount == Decimal("10000000")
+    assert upsert.value_currency == "UZS"
+    assert upsert.raw_json["detail_value_text"] == "UZS 10000000"
+
+
+def test_normalize_ignores_zero_jsonld_price_placeholder() -> None:
+    raw = {
+        "external_id": "444",
+        "title": "Tender with hidden value",
+        "detail_url": "https://www.uzbekistantenders.com/tender/hidden.php",
+        "deadline_text": "29 Jun 2026",
+        "value_text": None,
+        **_parse_detail_page(
+            _detail_html(
+                identifier="444",
+                price="0.00",
+                price_currency="USD",
+            )
+        ),
+    }
+
+    upsert = UzbekistanTendersConnector()._normalize(raw)
+
+    assert upsert.value_amount is None
+    assert upsert.value_currency is None
 
 
 def test_normalize_empty_title_raises() -> None:

@@ -282,6 +282,55 @@ def test_parse_detail_page_extracts_fields_documents_and_lots() -> None:
     assert lots[0]["description_ru"].startswith("Химическая обработка")
     assert lots[0]["currency"] == "KZT"
     assert lots[0]["total_amount"] == "2000000.00"
+    assert parsed["detail_total_amount_text"] == "2000000.00 тенге"
+
+
+def test_normalize_falls_back_to_detail_lot_total_when_listing_value_missing() -> None:
+    html = _read_fixture("listing.html")
+    row = HTMLParser(html).css("tr.item")[0]
+    raw = {
+        **_parse_row(row),
+        "value_text": "не указана",
+        **_parse_detail_page(DETAIL_HTML),
+    }
+
+    upsert = MitworkConnector()._normalize(raw)
+
+    assert upsert.value_amount == Decimal("2000000.00")
+    assert upsert.value_currency == "KZT"
+
+
+def test_normalize_falls_back_to_detail_total_summary_without_lots() -> None:
+    html = _read_fixture("listing.html")
+    row = HTMLParser(html).css("tr.item")[0]
+    raw = {
+        **_parse_row(row),
+        "value_text": "",
+        "detail_total_amount_text": "2 500 000,00 тенге",
+    }
+
+    upsert = MitworkConnector()._normalize(raw)
+
+    assert upsert.value_amount == Decimal("2500000.00")
+    assert upsert.value_currency == "KZT"
+
+
+def test_normalize_does_not_sum_partial_detail_lot_totals() -> None:
+    html = _read_fixture("listing.html")
+    row = HTMLParser(html).css("tr.item")[0]
+    raw = {
+        **_parse_row(row),
+        "value_text": "",
+        "_lots": [
+            {"number": "1", "total_amount": "100.00", "currency": "KZT"},
+            {"number": "2", "total_amount": None, "currency": None},
+        ],
+    }
+
+    upsert = MitworkConnector()._normalize(raw)
+
+    assert upsert.value_amount is None
+    assert upsert.value_currency is None
 
 
 # ---------------------------------------------------------------------------

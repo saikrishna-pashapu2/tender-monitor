@@ -20,7 +20,9 @@ Shape notes that differ from goszakup/samruk_kazyna:
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, ClassVar
 from urllib.parse import urljoin
 
@@ -65,6 +67,11 @@ DETAIL_FIELD_LABELS: dict[str, str] = {
     "Тип закупки": "purchase_type",
     "Статус": "status_text_detail",
 }
+
+_DETAIL_TOTAL_RE = re.compile(
+    r"Общая\s+сумма\s+закупки\s*[-:]\s*([^,]+)",
+    re.IGNORECASE,
+)
 
 
 def _td_text(td: Node) -> str:
@@ -245,11 +252,27 @@ def _parse_lots(tree: HTMLParser) -> list[dict[str, Any]]:
     return lots
 
 
+def _parse_detail_total_amount_text(tree: HTMLParser) -> str | None:
+    meta = tree.css_first('meta[property="og:description"]')
+    if meta is None:
+        return None
+
+    content = (meta.attributes.get("content") or "").strip()
+    if not content:
+        return None
+
+    match = _DETAIL_TOTAL_RE.search(content)
+    if match is None:
+        return content if parse_kzt_amount(content) is not None else None
+    return match.group(1).strip() or None
+
+
 def _parse_detail_page(html: str) -> dict[str, Any]:
     tree = HTMLParser(html)
     detail_fields = _parse_detail_fields(tree)
     documents = _parse_documents(tree)
     lots = _parse_lots(tree)
+    detail_total_amount_text = _parse_detail_total_amount_text(tree)
 
     parsed: dict[str, Any] = {}
     if detail_fields:
@@ -258,7 +281,53 @@ def _parse_detail_page(html: str) -> dict[str, Any]:
         parsed["_documents"] = documents
     if lots:
         parsed["_lots"] = lots
+    if detail_total_amount_text is not None:
+        parsed["detail_total_amount_text"] = detail_total_amount_text
     return parsed
+
+
+def _coerce_kzt_amount(value: Any) -> Decimal | None:
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, int):
+        return Decimal(value)
+    if isinstance(value, float):
+        return Decimal(str(value))
+    if isinstance(value, str):
+        return parse_kzt_amount(value)
+    return None
+
+
+def _sum_detail_lot_totals(raw: dict[str, Any]) -> Decimal | None:
+    lots = raw.get("_lots")
+    if not isinstance(lots, list) or not lots:
+        return None
+
+    total = Decimal("0")
+    for lot in lots:
+        if not isinstance(lot, dict):
+            return None
+
+        amount = _coerce_kzt_amount(lot.get("total_amount"))
+        if amount is None:
+            amount = _coerce_kzt_amount(lot.get("total_amount_text"))
+        if amount is None:
+            return None
+        total += amount
+
+    return total
+
+
+def _resolve_value_amount(raw: dict[str, Any]) -> Decimal | None:
+    listing_value = parse_kzt_amount(raw.get("value_text"))
+    if listing_value is not None:
+        return listing_value
+
+    lot_total = _sum_detail_lot_totals(raw)
+    if lot_total is not None:
+        return lot_total
+
+    return parse_kzt_amount(raw.get("detail_total_amount_text"))
 
 
 def _parse_row(row: Node) -> dict[str, Any]:
@@ -513,7 +582,7 @@ class MitworkConnector(Connector):
         buyer_name = raw.get("buyer_name")
         buyer_external_id = raw.get("buyer_bin")
 
-        value_amount = parse_kzt_amount(raw.get("value_text"))
+        value_amount = _resolve_value_amount(raw)
         value_currency = "KZT" if value_amount is not None else None
 
         detail_fields = raw.get("detail_fields")

@@ -425,6 +425,34 @@ async def test_fetch_latest_since_filter_keeps_unparseable_dates() -> None:
     assert ids == {"532912293", "532912295"}
 
 
+async def test_fetch_latest_since_filter_keeps_same_day_rows() -> None:
+    items = _read_fixture("listing_uz.json")["data"]
+    # The upstream date_c value only has day precision. If the scheduler
+    # last ran at noon on May 16, a row dated 16-May-2026 must still
+    # survive the filter even though parse_dmy_month_name returns midnight.
+    captured: list[httpx.Request] = []
+    handler = _make_handler(
+        captured=captured,
+        payloads={
+            "KZ": {"draw": 1, "recordsTotal": 0, "recordsFiltered": 0, "data": []},
+            "UZ": {
+                "draw": 1,
+                "recordsTotal": len(items),
+                "recordsFiltered": len(items),
+                "data": items,
+            },
+        },
+    )
+    transport = httpx.MockTransport(handler)
+    connector = TendersinfoConnector(http_client_factory=_client_factory(transport))
+
+    since = datetime(2026, 5, 16, 12, 0, tzinfo=UTC)
+    result = await connector.fetch_latest(since=since)
+
+    ids = {t.external_id for t in result.tenders}
+    assert "532912293" in ids
+
+
 async def test_fetch_latest_500_raises_fetch_error() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if _is_listing(request):

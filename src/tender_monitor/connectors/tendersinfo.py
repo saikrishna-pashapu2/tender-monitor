@@ -357,7 +357,11 @@ class TendersinfoConnector(Connector):
             # Keep rows whose date_c didn't parse -- we have no
             # basis to drop them, and the aggregator occasionally
             # emits blank/odd dates on rows we still want.
-            if published is None or published >= since:
+            #
+            # TendersInfo only gives day-level publish dates, parsed as
+            # midnight UTC. Compare by date so a scheduler run at noon
+            # does not drop tenders published "today" at 00:00.
+            if published is None or published.date() >= since.date():
                 in_window.append(item)
         logger.info(
             "tendersinfo.since_filter_applied",

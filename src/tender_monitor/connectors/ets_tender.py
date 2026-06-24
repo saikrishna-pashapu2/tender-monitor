@@ -71,6 +71,7 @@ _DETAIL_LABEL_KEYS: dict[str, str] = {
     "Количество": "quantity_text",
     "Цена за единицу": "unit_price_text",
     "Общая стоимость": "total_price_text",
+    "Общая стоимость закупки": "total_price_text",
     "Опубликовано": "published_text",
     "Актуально до": "deadline_text",
     "Последнее изменение": "last_edited_text",
@@ -89,6 +90,31 @@ def _strip_fragment(href: str) -> str:
 
 def _norm_text(node: Node | None) -> str:
     return " ".join(node.text().split()) if node is not None else ""
+
+
+def _norm_label(node: Node | None) -> str:
+    return _norm_text(node).rstrip(":").strip()
+
+
+def _detail_value_present(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, list | dict | tuple | set):
+        return bool(value)
+    return True
+
+
+def _merge_listing_and_detail(
+    listing: dict[str, Any], detail: dict[str, Any]
+) -> dict[str, Any]:
+    """Merge detail fields without letting detail misses erase listing data."""
+    merged = dict(listing)
+    for key, value in detail.items():
+        if _detail_value_present(value):
+            merged[key] = value
+    return merged
 
 
 def _extract_documents(parser: HTMLParser) -> list[dict[str, Any]]:
@@ -249,25 +275,35 @@ def _parse_detail(html: str) -> dict[str, Any]:
         desc_node = parser.css_first(".expandable-text")
     out["description_full"] = _norm_text(desc_node) or None
 
-    # Walk every <tr><th>label</th><td>value</td></tr> on the page.
+    # Walk both detail layouts seen on ETS:
+    #   <tr><th>label</th><td>value</td></tr>
+    #   <tr><td class="fname">label:</td><td>value</td></tr>
     for tr in parser.css("table tr"):
-        th = tr.css_first("th")
-        td = tr.css_first("td")
-        if th is None or td is None:
-            continue
-        label = " ".join(th.text().split())
+        label_node = tr.css_first("th")
+        value_node = tr.css_first("td")
+        if label_node is None:
+            cells = tr.css("td")
+            if len(cells) < 2:
+                continue
+            first_class = cells[0].attributes.get("class") or ""
+            if "fname" not in first_class.split():
+                continue
+            label_node = cells[0]
+            value_node = cells[1]
+
+        label = _norm_label(label_node)
         # For the organizer cell we want the link's text + href, not the
         # td.text() (which would already be the same for plain links but
         # we capture the URL explicitly).
         if label == "Организатор":
-            link = td.css_first("a")
+            link = value_node.css_first("a")
             if link is not None:
                 out["organizer_link_text"] = link.text().strip() or None
                 out["organizer_link_url"] = (
                     (link.attributes.get("href") or "").strip() or None
                 )
             continue
-        value = " ".join(td.text().split())
+        value = _norm_text(value_node)
         if not label or not value:
             continue
         field = _DETAIL_LABEL_KEYS.get(label)
@@ -488,7 +524,7 @@ class EtsTenderConnector(Connector):
                     # None.
                     combined.append(dict(row))
                     continue
-                combined.append({**row, **detail})
+                combined.append(_merge_listing_and_detail(row, detail))
 
         return combined
 

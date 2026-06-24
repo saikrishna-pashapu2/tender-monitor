@@ -73,14 +73,17 @@ from tender_monitor.core.schemas import TenderUpsert
 logger = get_logger(__name__)
 
 
-# Status string from the API → our TenderStatus. We've only seen
-# "docs_objections" so far (pre-bid objection window — the tender is
-# visible but suppliers can't bid yet). Expand as live data reveals
-# the rest of the taxonomy; everything not listed falls through to
-# TenderStatus.unknown so an unmapped status never silently looks
-# like "open".
+# Status string from the API → our TenderStatus. Everything not listed
+# falls through to TenderStatus.unknown so a genuinely new upstream
+# state never silently looks open.
 STATUS_MAPPING: dict[str, TenderStatus] = {
+    "cancel": TenderStatus.cancelled,
+    "check_affilation_and_debts": TenderStatus.closed,
+    "check_docs": TenderStatus.closed,
+    "close": TenderStatus.closed,
     "docs_objections": TenderStatus.announced,
+    "not_realized": TenderStatus.cancelled,
+    "open": TenderStatus.open,
 }
 
 

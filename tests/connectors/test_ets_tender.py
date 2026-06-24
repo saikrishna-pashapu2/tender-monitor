@@ -162,6 +162,29 @@ def test_parse_detail_extracts_document_links() -> None:
     assert documents[1]["ext"] == "DOCX"
 
 
+def test_parse_detail_handles_live_fname_table_layout() -> None:
+    html = """
+    <html><body>
+      <table>
+        <tr id="trade-info-lot-price">
+          <td class="fname">Общая стоимость закупки:</td>
+          <td>1 000 000,00 тенге</td>
+        </tr>
+        <tr id="trade-info-ens-tru">
+          <td class="fname">Категория ЕНС ТРУ:</td>
+          <td>123456.789.000000 — Тестовая категория</td>
+        </tr>
+      </table>
+    </body></html>
+    """
+
+    detail = _parse_detail(html)
+
+    assert detail["total_price_text"] == "1 000 000,00 тенге"
+    assert detail["enstru_code"] == "123456.789.000000"
+    assert detail["enstru_label"] == "Тестовая категория"
+
+
 # ---------------------------------------------------------------------------
 # Normalization
 # ---------------------------------------------------------------------------
@@ -357,6 +380,43 @@ async def test_fetch_latest_detail_403_keeps_listing_fields() -> None:
     # Dates were "Скрыто" on the listing → None after parsing.
     assert closed_tender.published_at is None
     assert closed_tender.deadline_at is None
+
+
+async def test_fetch_latest_detail_misses_do_not_overwrite_listing_dates() -> None:
+    short_html = (
+        '<html><body><table class="search-results"><tbody>'
+        '<tr>'
+        '<td><a class="search-results-title" '
+        'href="/market/foo/tender-9001/">Запрос цен № 9001'
+        '<div class="search-results-title-desc">Тестовый закуп</div>'
+        '</a></td>'
+        '<td><a href="/firms/foo/1/">ТОО Foo</a></td>'
+        '<td class="nowrap">18.05.2026 09:00</td>'
+        '<td class="nowrap">20.05.2026 09:00</td>'
+        '<td class="favorite-column"></td>'
+        '</tr>'
+        '</tbody></table></body></html>'
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if _is_listing(request):
+            return httpx.Response(200, html=short_html)
+        # This mimics the current live detail layout when the fields we
+        # project are absent: _parse_detail returns published_text=None
+        # and deadline_text=None. Those misses must not erase listing dates.
+        return httpx.Response(
+            200,
+            html='<html><body><div class="expandable-text">Detail text</div></body></html>',
+        )
+
+    transport = httpx.MockTransport(handler)
+    connector = EtsTenderConnector(http_client_factory=_client_factory(transport))
+    result = await connector.fetch_latest()
+
+    assert len(result.tenders) == 1
+    tender = result.tenders[0]
+    assert tender.published_at == datetime(2026, 5, 18, 4, 0, tzinfo=UTC)
+    assert tender.deadline_at == datetime(2026, 5, 20, 4, 0, tzinfo=UTC)
 
 
 async def test_fetch_latest_listing_500_raises_fetch_error() -> None:

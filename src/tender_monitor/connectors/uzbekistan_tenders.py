@@ -26,11 +26,14 @@ Shape notes that differ from the other connectors:
 - The page mixes "authority cards" (links to per-authority listings
   with no content row) and real tender cards. Real cards always
   carry a ``div.tender-card-content`` row -- that's the filter.
-- ``Tender Value`` is sometimes a parseable number+currency
-  (``"41200000 UZS"``, ``"208500 USD"``) and sometimes the placeholder
+- ``Tender Value`` may appear on the listing card
+  (``"41200000 UZS"``, ``"208500 USD"``) or only on the detail page
+  (``"UZS 10000000"``). It is sometimes the placeholder
   ``"Refer Document"``. The credit-rating tender is one of the
   Refer-Document rows. ``value_amount`` is None whenever we can't
-  pull a number out.
+  pull a number out. JSON-LD ``price`` is treated as a fallback only,
+  because the site often publishes ``0.00 USD`` there while the visible
+  page carries the real UZS value.
 - Same upstream tender can appear on TendersInfo with a different
   ``external_id`` (the aggregators are independent of each other).
   We accept the duplication; cross-source dedup is a separate work
@@ -64,7 +67,10 @@ logger = get_logger(__name__)
 # NBSP escape so editor/Write-tool passes can't silently swap it
 # for a regular space (we look it up by code point downstream).
 _NBSP = "\u00a0"
+_NARROW_NBSP = "\u202f"
 _WS_RE = re.compile(r"\s+")
+_AMOUNT_RE = re.compile(r"\d[\d\s\u00a0\u202f,\.]*")
+_KNOWN_CURRENCIES = frozenset({"UZS", "USD", "EUR", "KZT", "RUB", "GBP"})
 
 
 def _norm_text(node: Node | None) -> str:
@@ -77,30 +83,88 @@ def _norm_text(node: Node | None) -> str:
 
 
 def parse_value_text(text: str | None) -> tuple[Decimal | None, str | None]:
-    """Split ``"41200000 UZS"`` / ``"Refer Document"`` / ``""`` into
+    """Split ``"41200000 UZS"`` / ``"UZS 10000000"`` / ``""`` into
     ``(amount, currency)``.
 
-    The currency token is the last whitespace-delimited word IF it's
-    alphabetic and 3 characters long (ISO-4217-ish). Anything else
-    (``"Refer Document"``, empty, garbage) yields ``(None, None)``.
+    The site has used both amount-first listing values and
+    currency-first detail values. We keep the parser local to this
+    connector because it returns both amount and currency, unlike the
+    shared KZT amount-only helper.
     """
     if not text:
         return None, None
-    cleaned = _WS_RE.sub(" ", text.replace(_NBSP, " ")).strip()
+    cleaned = _WS_RE.sub(
+        " ", text.replace(_NBSP, " ").replace(_NARROW_NBSP, " ")
+    ).strip()
     if not cleaned:
         return None, None
-    parts = cleaned.split()
-    if not parts:
+
+    currency = _extract_value_currency(cleaned)
+    amount = _extract_decimal_amount(cleaned)
+    if amount is None:
         return None, None
-    last = parts[-1]
-    if last.isalpha() and len(last) == 3 and len(parts) >= 2:
-        currency = last.upper()
-        amount_str = "".join(parts[:-1])
-        try:
-            return Decimal(amount_str), currency
-        except (InvalidOperation, ValueError):
-            return None, currency
-    return None, None
+    return amount, currency
+
+
+def _extract_value_currency(text: str) -> str | None:
+    parts = text.split()
+    if not parts:
+        return None
+
+    for idx in (0, -1):
+        token = parts[idx].strip(".,:;()[]{}").upper()
+        if token.isalpha() and len(token) == 3:
+            return token
+
+    for part in parts:
+        token = part.strip(".,:;()[]{}").upper()
+        if token in _KNOWN_CURRENCIES:
+            return token
+    return None
+
+
+def _extract_decimal_amount(text: str) -> Decimal | None:
+    match = _AMOUNT_RE.search(text)
+    if match is None:
+        return None
+
+    compact = match.group(0).strip("., ")
+    for sep in (" ", _NBSP, _NARROW_NBSP):
+        compact = compact.replace(sep, "")
+    if not compact:
+        return None
+
+    cleaned = _normalize_decimal_separators(compact)
+    if not cleaned:
+        return None
+    try:
+        return Decimal(cleaned)
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _normalize_decimal_separators(value: str) -> str:
+    has_comma = "," in value
+    has_period = "." in value
+    if has_comma and has_period:
+        decimal_sep = "," if value.rfind(",") > value.rfind(".") else "."
+        thousands_sep = "." if decimal_sep == "," else ","
+        value = value.replace(thousands_sep, "")
+        return value.replace(decimal_sep, ".")
+    if has_comma:
+        return _normalize_single_separator(value, ",")
+    if has_period:
+        return _normalize_single_separator(value, ".")
+    return value
+
+
+def _normalize_single_separator(value: str, sep: str) -> str:
+    parts = value.split(sep)
+    if len(parts) > 2 or all(len(part) == 3 for part in parts[1:]):
+        return "".join(parts)
+    if sep == ",":
+        return value.replace(",", ".")
+    return value
 
 
 # Label substrings we look for inside each col-cell. Order doesn't
@@ -126,6 +190,20 @@ def _strip_label(text: str, label: str) -> str:
         return text.strip()
     remainder = text[idx + len(label) :].lstrip(".: \t")
     return remainder.strip()
+
+
+def _extract_detail_label(parser: HTMLParser, label: str) -> str | None:
+    for strong in parser.css("li strong"):
+        label_text = _norm_text(strong)
+        if label not in label_text:
+            continue
+        parent = strong.parent
+        if parent is None:
+            continue
+        value = _strip_label(_norm_text(parent), label)
+        if value:
+            return value
+    return None
 
 
 def _parse_card(card: Node) -> dict[str, Any] | None:
@@ -277,6 +355,10 @@ def _parse_detail_page(html: str) -> dict[str, Any]:
         description = _clean_string(meta_description.attributes.get("content"))
         if description is not None:
             parsed["detail_meta_description"] = description
+
+    detail_value = _extract_detail_label(parser, _LABEL_VALUE)
+    if detail_value is not None:
+        parsed["detail_value_text"] = detail_value
 
     offer: dict[str, Any] | None = None
     fallback: dict[str, Any] | None = None
@@ -488,12 +570,11 @@ class UzbekistanTendersConnector(Connector):
 
         value_amount, value_currency = parse_value_text(raw.get("value_text"))
         if value_amount is None:
-            value_amount, value_currency = parse_value_text(raw.get("detail_price"))
-            if value_currency is None:
-                detail_currency = raw.get("detail_price_currency")
-                value_currency = (
-                    detail_currency if isinstance(detail_currency, str) else None
-                )
+            value_amount, value_currency = parse_value_text(
+                raw.get("detail_value_text")
+            )
+        if value_amount is None:
+            value_amount, value_currency = _parse_jsonld_price(raw)
         deadline_at = _parse_detail_date(
             raw.get("deadline_text_detail")
         ) or parse_full_month_date(raw.get("deadline_text"))
@@ -534,6 +615,22 @@ class UzbekistanTendersConnector(Connector):
             language=Language.en,
             raw_json=raw_json,
         )
+
+
+def _parse_jsonld_price(raw: dict[str, Any]) -> tuple[Decimal | None, str | None]:
+    price = raw.get("detail_price")
+    if not isinstance(price, str):
+        return None, None
+
+    currency = raw.get("detail_price_currency")
+    combined = price
+    if isinstance(currency, str) and currency:
+        combined = f"{price} {currency}"
+
+    amount, parsed_currency = parse_value_text(combined)
+    if amount is None or amount == 0:
+        return None, None
+    return amount, parsed_currency
 
 
 __all__ = [
