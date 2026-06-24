@@ -227,6 +227,10 @@ def test_esg_pi_noise_does_not_match(
         "Issiqxona gazlari emissiyalarini hisoblash va verifikatsiya qilish",
         "Green finance and national assessment tool development",
         "ESG rating and carbon footprint reduction services",
+        "IFRS S1 and IFRS S2 climate disclosure support",
+        "Responsible procurement and supplier code of conduct review",
+        "Разработка ESG диагностики и матрицы существенности",
+        "Инвентаризация ПГ и климатические проекты",
     ],
 )
 def test_esg_high_signal_terms_still_match(
@@ -234,6 +238,18 @@ def test_esg_high_signal_terms_still_match(
 ) -> None:
     result = match_text(text, real_config)
     assert "esg" in result.matched_groups
+
+
+def test_esg_ifrs_phrase_required(real_config: KeywordsConfig) -> None:
+    positive = match_text(
+        "Preparation of IFRS S1-S2 sustainability disclosures", real_config
+    )
+    assert "esg" in positive.matched_groups
+
+    negative = match_text(
+        "Audit of IFRS financial statements and accounting policies", real_config
+    )
+    assert "esg" not in negative.matched_groups
 
 
 def test_esg_training_with_explicit_esg_still_matches(
