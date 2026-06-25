@@ -17,7 +17,6 @@ Why this matched:
   - {{ group }}: {{ hits|join(', ') if hits else '(no phrase details)' }}
 {% endfor %}
 
-Open in Tender Monitor: {{ detail_url }}
-View on source:         {{ source_url }}
+View on source: {{ source_url }}
 
 You're receiving this because your email is subscribed to {{ matched_groups|join(', ') }} notifications.

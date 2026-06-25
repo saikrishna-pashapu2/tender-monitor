@@ -22,7 +22,6 @@ Value:     {% if tender.value_amount is not none %}{{ tender.value_amount|pretty
   - {{ group }}: {{ hits|join(', ') if hits else '(no phrase details)' }}
 {% endfor %}
 {% endif %}
-Open in Tender Monitor: {{ detail_url }}
-View on source:         {{ source_url }}
+View on source: {{ source_url }}
 
 {{ sender_name }} shared this tender with you from Tender Monitor. This does not subscribe you to future tender notifications.

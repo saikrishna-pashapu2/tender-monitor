@@ -241,7 +241,7 @@ async def test_dispatch_does_nothing_for_unmatched_tender(
 
 def test_render_email_includes_phrases_and_links() -> None:
     """Minimum-fidelity render check — subject + bodies must reference
-    the tender title, matched group, and the detail link."""
+    the tender title, matched group, and the source link."""
     from types import SimpleNamespace
     from uuid import uuid4
 
@@ -267,9 +267,13 @@ def test_render_email_includes_phrases_and_links() -> None:
     assert "ESG audit services" in message.html
     assert "ESG audit" in message.html  # phrase chip
     assert "esg" in message.subject
-    assert "http://app/tenders/" in message.html
     assert "View on source" in message.html
+    assert "https://src/example" in message.html
     assert "ESG audit services" in message.text
+    assert "View on source: https://src/example" in message.text
+    assert "Open in Tender Monitor" not in message.html
+    assert "http://app/tenders/" not in message.html
+    assert "http://app/tenders/" not in message.text
 
 
 async def test_share_tender_sends_to_arbitrary_recipients_and_logs_success(
@@ -534,8 +538,10 @@ def test_render_share_email_includes_sender_message_and_share_footer() -> None:
     assert "Tender shared by Sai Kumar" in message.html
     assert "This looks relevant for the ESG team." in message.html
     assert "Buyer: Acme Co" in message.text
-    assert "Open in Tender Monitor: http://app/tenders/" in message.text
-    assert "View on source:         https://src/example" in message.text
+    assert "View on source: https://src/example" in message.text
+    assert "Open in Tender Monitor" not in message.html
+    assert "http://app/tenders/" not in message.html
+    assert "http://app/tenders/" not in message.text
     assert "Sai Kumar shared this tender with you from Tender Monitor" in message.text
     assert "Manage subscriptions" not in message.html
     assert "You're receiving this because your email is subscribed" not in message.text
