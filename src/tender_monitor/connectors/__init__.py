@@ -15,7 +15,6 @@ from tender_monitor.connectors import goszakup as _goszakup
 from tender_monitor.connectors import mitwork as _mitwork
 from tender_monitor.connectors import national_bank as _national_bank
 from tender_monitor.connectors import samruk_kazyna as _samruk_kazyna
-from tender_monitor.connectors import tendersinfo as _tendersinfo
 from tender_monitor.connectors import uzex_etender as _uzex_etender
 from tender_monitor.connectors import xt_xarid as _xt_xarid
 from tender_monitor.connectors import zakup_unified as _zakup_unified
@@ -43,7 +42,6 @@ _REGISTERED_MODULES = (
     _mitwork,
     _national_bank,
     _samruk_kazyna,
-    _tendersinfo,
     _uzex_etender,
     _xt_xarid,
     _zakup_unified,

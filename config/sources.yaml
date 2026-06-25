@@ -58,14 +58,3 @@ sources:
     base_url: "https://xt-xarid.uz"
     enabled: true
     schedule_minutes: 30
-  # tendersinfo is a multi-country aggregator: one fetch_latest call
-  # pulls both KZ and UZ rows and assigns the per-tender country from
-  # the response payload. The country slot here is a placeholder so
-  # the source-row constraint is satisfied; the scheduler treats the
-  # per-tender country as authoritative for downstream queries.
-  - name: tendersinfo
-    display_name: "TendersInfo (commercial aggregator, KZ + UZ)"
-    country: KZ
-    base_url: "https://www.tendersinfo.com"
-    enabled: true
-    schedule_minutes: 60

@@ -5,7 +5,7 @@ Canonical project doc. Read this before making changes.
 ## Project overview
 
 `tender-monitor` watches public procurement tender platforms in Kazakhstan
-(10 sources) and Uzbekistan (5 sources) — 15 sources total. Every 30–60
+and Uzbekistan — 14 sources total. Every 30–60
 minutes the system pulls new tenders from each source, filters them against
 ESG and credit-rating keyword groups, stores everything in Postgres, and
 pushes matches to a Telegram group and an email distribution list. A FastAPI
@@ -130,7 +130,7 @@ sets the field later.
 
 `raw_json` is the source of truth for every tender; the normalized columns
 are projections of it that exist purely so the matcher, API, and indexes
-can work efficiently. There is one `tenders` table for all 15 sources, not
+can work efficiently. There is one `tenders` table for all 14 sources, not
 one table per source — this is what keeps the matcher, notifier, API, and
 cross-source dedup straightforward instead of fanning out into 16 parallel
 implementations. New fields that appear in a source's API don't trigger a
@@ -138,7 +138,7 @@ migration: they land in `raw_json` automatically, and we project them into
 a typed column later only if a query or notification template actually
 needs them. Per-source tables would only be justified if sources
 represented fundamentally different kinds of objects (tenders vs. live
-auctions vs. RFIs); all 15 sources here are tenders, so a single shared
+auctions vs. RFIs); all 14 sources here are tenders, so a single shared
 table is the right shape.
 
 ## Connector contract

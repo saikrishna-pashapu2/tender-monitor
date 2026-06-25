@@ -489,19 +489,6 @@ def test_detail_endpoint_renders_xt_xarid_source_layout(
     assert "climate-strategy.pdf" in resp.text
 
 
-def test_detail_endpoint_renders_tendersinfo_source_layout(
-    client: TestClient,
-) -> None:
-    tender_id = _tendersinfo_tender_id(client)
-    resp = client.get(f"/tenders/{tender_id}")
-    assert resp.status_code == 200
-    assert "TendersInfo Commercial Aggregator" in resp.text
-    assert "Notice 532912293" in resp.text
-    assert "Environment And Pollution" in resp.text
-    assert "United Nations Development Programme" in resp.text
-    assert "Aggregator payload" in resp.text
-
-
 def test_detail_endpoint_renders_related_sidebar(client: TestClient) -> None:
     # The seeded credit-rating tender lives on the goszakup source,
     # which has 6 total rows. The "More from goszakup" sidebar should
@@ -544,7 +531,7 @@ def test_api_tenders_response_shape(client: TestClient) -> None:
     resp = client.get("/api/tenders?per_page=5&matched=all")
     body = resp.json()
     assert set(body.keys()) >= {"tenders", "total", "page", "per_page", "pages"}
-    assert body["total"] == 18
+    assert body["total"] == 17
     assert body["per_page"] == 5
     assert body["pages"] == 4
     assert len(body["tenders"]) == 5
@@ -554,10 +541,10 @@ def test_api_tenders_response_shape(client: TestClient) -> None:
 
 def test_api_tenders_default_returns_matched_only(client: TestClient) -> None:
     # Without an explicit ``matched`` param the API hides unmatched
-    # tenders. 7 of 18 seeded rows have matched_groups.
+    # tenders. 6 of 17 seeded rows have matched_groups.
     resp = client.get("/api/tenders?per_page=100")
     body = resp.json()
-    assert body["total"] == 7
+    assert body["total"] == 6
     for entry in body["tenders"]:
         assert entry["matched_groups"], (
             "default API view should only return matched tenders, "
@@ -631,7 +618,6 @@ def test_api_sources_returns_list(client: TestClient) -> None:
         "mitwork",
         "national_bank",
         "samruk_kazyna",
-        "tendersinfo",
         "xt_xarid",
         "zakup_unified",
     }
@@ -722,12 +708,3 @@ def _ets_tender_tender_id(client: TestClient) -> str:
         if entry["external_id"] == "2085996":
             return entry["id"]
     raise AssertionError("seeded ets_tender tender 2085996 was not returned")
-
-
-def _tendersinfo_tender_id(client: TestClient) -> str:
-    resp = client.get("/api/tenders?source=tendersinfo&matched=all&per_page=100")
-    resp.raise_for_status()
-    for entry in resp.json()["tenders"]:
-        if entry["external_id"] == "532912293":
-            return entry["id"]
-    raise AssertionError("seeded tendersinfo tender 532912293 was not returned")

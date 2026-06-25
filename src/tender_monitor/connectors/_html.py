@@ -156,36 +156,9 @@ def parse_kz_local_datetime_dmy(text: str | None) -> datetime | None:
     return localized.astimezone(UTC)
 
 
-def parse_dmy_month_name(text: str | None) -> datetime | None:
-    """Parse "DD-MMM-YYYY" (English-abbreviated month) at UTC midnight.
-
-    TendersInfo emits dates in this format and gives no time-of-day,
-    so we anchor everything to 00:00 UTC. That choice is consistent
-    with "this tender was published on day X" semantics rather than
-    pretending to a precision the source doesn't provide. Examples:
-    ``"16-May-2026"``, ``"01-Jun-2026"``.
-
-    Returns None on empty / missing / unparseable input.
-    """
-    if not text:
-        return None
-    cleaned = text.strip()
-    if not cleaned:
-        return None
-    try:
-        # %b parses the English abbreviation independent of the
-        # process locale -- strptime's tables are baked, not locale-
-        # driven, which is what we want for an English-only field.
-        parsed = datetime.strptime(cleaned, "%d-%b-%Y")
-    except ValueError:
-        return None
-    return parsed.replace(tzinfo=UTC)
-
-
 __all__ = [
     "KZ_TZ",
     "TASHKENT_TZ",
-    "parse_dmy_month_name",
     "parse_kz_local_datetime",
     "parse_kz_local_datetime_dmy",
     "parse_kzt_amount",

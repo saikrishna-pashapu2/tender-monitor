@@ -127,7 +127,7 @@ def make_tender(
 async def seeded_session(
     api_session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncIterator[AsyncSession]:
-    """Seed a deterministic dataset: 8 sources, 18 tenders, mixed flags.
+    """Seed a deterministic dataset: 7 sources, 17 tenders, mixed flags.
 
     Layout:
       - 6 KZ tenders on ``goszakup`` (4 matched, 2 unmatched)
@@ -137,7 +137,6 @@ async def seeded_session(
       - 1 KZ tender on ``national_bank`` for source-specific detail rendering
       - 1 KZ tender on ``zakup_unified`` for source-specific detail rendering
       - 1 KZ tender on ``samruk_kazyna`` for source-specific detail rendering
-      - 1 UZ tender on ``tendersinfo`` for source-specific detail rendering
       - mixed deadlines (past, near, far) and values
     """
     async with api_session_factory() as session:
@@ -177,12 +176,6 @@ async def seeded_session(
                     display_name="Unified Procurement Portal",
                     country=Country.KZ,
                     base_url="https://zakup.gov.kz",
-                ),
-                make_source(
-                    "tendersinfo",
-                    display_name="TendersInfo",
-                    country=Country.KZ,
-                    base_url="https://www.tendersinfo.com",
                 ),
                 make_source(
                     "xt_xarid",
@@ -349,59 +342,6 @@ async def seeded_session(
                 deadline_offset_days=-1,
                 published_offset_days=-7,
                 first_seen_offset_minutes=60,
-            )
-        )
-        rows.append(
-            make_tender(
-                source_name="tendersinfo",
-                external_id="532912293",
-                title="Conducting Inclusivity Assessment For Sustainable Urban Planning",
-                buyer_name="United Nations Development Programme",
-                country=Country.UZ,
-                matched_groups=["esg"],
-                match_details={
-                    "esg": {
-                        "matched_phrases": ["sustainable"],
-                        "matched_tokens": [],
-                    }
-                },
-                value_amount=None,
-                value_currency=None,
-                deadline_offset_days=14,
-                published_offset_days=-2,
-                first_seen_offset_minutes=67,
-                raw_json={
-                    "site_tender_id": "532912293",
-                    "region_name": "Uzbekistan",
-                    "country": "UZ",
-                    "sector_name": "Environment And Pollution",
-                    "short_desc": (
-                        "Conducting Inclusivity Assessment For Sustainable Urban Planning\n"
-                        "open In A New Window"
-                    ),
-                    "date_c": "16-May-2026",
-                    "doc_last": "01-Jun-2026",
-                    "est_cost_h": "",
-                    "organisation_h": (
-                        "<br><b>Tender Authority: </b>"
-                        "United Nations Development Programme"
-                    ),
-                    "url": (
-                        "https://www.tendersinfo.com/tenders_details/"
-                        "532912293-conducting-inclusivity-assessment.php"
-                    ),
-                    "_lots": [
-                        {
-                            "name_ru": None,
-                            "name_en": (
-                                "Conducting Inclusivity Assessment For "
-                                "Sustainable Urban Planning"
-                            ),
-                            "description_ru": None,
-                            "description_en": None,
-                        }
-                    ],
-                },
             )
         )
         rows.append(
