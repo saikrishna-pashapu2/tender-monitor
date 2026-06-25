@@ -287,7 +287,7 @@ async def _rematch_existing(
 ) -> dict[str, int]:
     config = KeywordsConfig.load(path)
     changed = 0
-    cleared = 0
+    deleted = 0
     matched = 0
     total = 0
 
@@ -304,15 +304,15 @@ async def _rematch_existing(
             result = match_tender(_tender_to_upsert(row), config)
             match_details = result.match_details if result.match_details else None
 
-            if result.matched_groups:
-                matched += 1
-            if (
-                previous_groups != result.matched_groups
-                or previous_details != match_details
-            ):
+            if not result.matched_groups:
+                deleted += 1
                 changed += 1
-                if previous_groups and not result.matched_groups:
-                    cleared += 1
+                await session.delete(row)
+                continue
+
+            matched += 1
+            if previous_groups != result.matched_groups or previous_details != match_details:
+                changed += 1
                 row.matched_groups = list(result.matched_groups)
                 row.match_details = match_details
 
@@ -326,7 +326,7 @@ async def _rematch_existing(
         "total": total,
         "matched": matched,
         "changed": changed,
-        "cleared": cleared,
+        "deleted": deleted,
     }
 
 
@@ -362,7 +362,7 @@ def rematch_existing_cmd(
         f"tenders={result['total']} "
         f"matched={result['matched']} "
         f"changed={result['changed']} "
-        f"cleared={result['cleared']} "
+        f"deleted={result['deleted']} "
         f"dry_run={str(dry_run).lower()}"
     )
 
@@ -416,6 +416,7 @@ def run_once_cmd(source_name: str) -> None:
         f"created={result.created} "
         f"updated={result.updated} "
         f"unchanged={result.unchanged} "
+        f"deleted={result.deleted} "
         f"matched={result.matched} "
         f"partial_errors={len(result.partial_errors)} "
         f"duration_ms={result.duration_ms:.1f}"

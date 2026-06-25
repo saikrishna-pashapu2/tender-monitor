@@ -67,9 +67,9 @@ class TenderFilters:
         group_values = [g.strip() for g in (group or []) if g and g.strip()]
 
         # Three legal values from the URL:
-        #   "any"  → only matched tenders
-        #   "none" → only unmatched tenders
-        #   "all"  → no match filter applied (None on the dataclass)
+        #   "any"  -> only matched tenders
+        #   "none" -> only unmatched tenders; normally empty after cleanup
+        #   "all"  -> legacy no-filter mode (None on the dataclass)
         # Anything else (including the empty string) is treated as
         # "all" so users can clear the filter by submitting an empty
         # value in the UI.
@@ -248,39 +248,6 @@ async def get_tender(session: AsyncSession, tender_id: UUID) -> Tender | None:
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
-# Today the busiest source has ~600 rows; 1000 is the upper bound the
-# UI can render without becoming a memory hog. If a future source
-# scales past this, we'd move the sidebar to paginated / lazy loading.
-RELATED_LIMIT_MAX = 1000
-
-
-async def list_related_tenders(
-    session: AsyncSession,
-    source_name: str,
-    exclude_id: UUID,
-    limit: int | None = None,
-) -> list[Tender]:
-    """All recent tenders from the same source, for the detail-page sidebar.
-
-    Includes matched + unmatched on purpose — the home list filters to
-    matched-only, but an analyst on a detail page benefits from seeing
-    everything else the source has published recently in one glance.
-    Ordered newest-first by ``first_seen_at``, excluding the current row.
-
-    Default ``limit=None`` returns up to ``RELATED_LIMIT_MAX`` rows.
-    """
-    effective_limit = limit if limit is not None else RELATED_LIMIT_MAX
-    stmt = (
-        select(Tender)
-        .options(selectinload(Tender.likes).selectinload(TenderLike.team_member))
-        .where(Tender.source_name == source_name)
-        .where(Tender.id != exclude_id)
-        .order_by(Tender.first_seen_at.desc().nulls_last(), Tender.id.asc())
-        .limit(effective_limit)
-    )
-    return list((await session.execute(stmt)).scalars().all())
-
-
 async def list_liked_tenders(
     session: AsyncSession,
     *,
@@ -350,14 +317,12 @@ __all__ = [
     "DEFAULT_PER_PAGE",
     "DEFAULT_SORT",
     "MAX_PER_PAGE",
-    "RELATED_LIMIT_MAX",
     "SORT_KEYS",
     "ListResult",
     "SortKey",
     "TenderFilters",
     "get_tender",
     "list_liked_tenders",
-    "list_related_tenders",
     "list_sources",
     "list_tenders",
     "normalize_pagination",

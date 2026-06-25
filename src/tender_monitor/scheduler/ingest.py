@@ -1,7 +1,7 @@
 """Per-source ingest orchestration.
 
 One ``ingest_source(source_name)`` call = one connector run +
-match-every-tender + persist + source-health update. The scheduler
+match tenders + persist matches + source-health update. The scheduler
 (runner.py) calls this on a cadence; the CLI's ``run-once`` calls it
 directly.
 
@@ -35,7 +35,7 @@ from tender_monitor.core.database import async_session_factory as default_sessio
 from tender_monitor.core.logging import get_logger
 from tender_monitor.core.models import Source, Tender
 from tender_monitor.core.schemas import TenderUpsert
-from tender_monitor.matching import KeywordsConfig, MatchResult, match_tender
+from tender_monitor.matching import KeywordsConfig, match_tender
 from tender_monitor.notifications import dispatch_many
 from tender_monitor.scheduler.upsert import UpsertOutcome, upsert_tender
 from tender_monitor.translation import (
@@ -68,6 +68,7 @@ class IngestResult:
     created: int
     updated: int
     unchanged: int
+    deleted: int
     matched: int
     partial_errors: list[str] = field(default_factory=list)
     duration_ms: float = 0.0
@@ -308,6 +309,7 @@ async def ingest_source(
                 created=0,
                 updated=0,
                 unchanged=0,
+                deleted=0,
                 matched=0,
                 skipped=True,
             )
@@ -377,6 +379,7 @@ async def ingest_source(
         UpsertOutcome.unchanged: 0,
     }
     matched_count = 0
+    deleted_count = 0
     # IDs of rows that were freshly *created* AND matched ≥ 1 group on
     # this run. These are the only tenders that trigger an outbound
     # email — re-matches (updates) deliberately don't, otherwise a
@@ -389,7 +392,8 @@ async def ingest_source(
             try:
                 match = match_tender(upsert, keywords_config)
             except Exception as exc:
-                # Defensive: a buggy matcher must NEVER cost us a tender row.
+                # Defensive: a buggy matcher must not persist an unverified
+                # row or delete a previously persisted row.
                 logger.error(
                     "scheduler.matcher_failed",
                     source=source_name,
@@ -397,13 +401,37 @@ async def ingest_source(
                     error_type=type(exc).__name__,
                     error=str(exc),
                 )
-                match = MatchResult()
+                continue
+
+            if not match.is_match:
+                existing = (
+                    await session.execute(
+                        select(Tender)
+                        .where(Tender.source_name == upsert.source_name)
+                        .where(Tender.external_id == upsert.external_id)
+                    )
+                ).scalar_one_or_none()
+                if existing is not None:
+                    await session.delete(existing)
+                    deleted_count += 1
+                    logger.info(
+                        "scheduler.tender.unmatched_deleted",
+                        source=source_name,
+                        external_id=upsert.external_id,
+                        tender_id=str(existing.id),
+                    )
+                else:
+                    logger.debug(
+                        "scheduler.tender.skipped_unmatched",
+                        source=source_name,
+                        external_id=upsert.external_id,
+                    )
+                continue
 
             outcome = await upsert_tender(session, upsert, match, run_started_at)
             counts[outcome.outcome] += 1
-            if match.is_match:
-                matched_count += 1
-            if outcome.outcome is UpsertOutcome.created and match.is_match:
+            matched_count += 1
+            if outcome.outcome is UpsertOutcome.created:
                 new_matched_ids.append(outcome.tender_id)
 
             logger.debug(
@@ -459,6 +487,7 @@ async def ingest_source(
         created=counts[UpsertOutcome.created],
         updated=counts[UpsertOutcome.updated],
         unchanged=counts[UpsertOutcome.unchanged],
+        deleted=deleted_count,
         matched=matched_count,
         partial_errors=list(fetch_result.partial_errors),
         duration_ms=fetch_result.duration_ms,
@@ -471,6 +500,7 @@ async def ingest_source(
         created=result.created,
         updated=result.updated,
         unchanged=result.unchanged,
+        deleted=result.deleted,
         matched=result.matched,
         partial_errors=len(result.partial_errors),
         duration_ms=result.duration_ms,

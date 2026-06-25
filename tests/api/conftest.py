@@ -127,11 +127,11 @@ def make_tender(
 async def seeded_session(
     api_session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncIterator[AsyncSession]:
-    """Seed a deterministic dataset: 7 sources, 17 tenders, mixed flags.
+    """Seed a deterministic matched-only dataset: 7 sources, 11 tenders.
 
     Layout:
-      - 6 KZ tenders on ``goszakup`` (4 matched, 2 unmatched)
-      - 6 UZ tenders on ``xt_xarid`` (2 matched, 4 unmatched)
+      - 4 KZ tenders on ``goszakup``
+      - 2 UZ tenders on ``xt_xarid``
       - 1 KZ tender on ``ets_tender`` for source-specific detail rendering
       - 1 KZ tender on ``mitwork`` for source-specific detail rendering
       - 1 KZ tender on ``national_bank`` for source-specific detail rendering
@@ -319,37 +319,17 @@ async def seeded_session(
         )
         rows.append(
             make_tender(
-                source_name="goszakup",
-                external_id="g-5",
-                title="Office supplies for the ministry",
-                buyer_name="Ministry of Finance",
-                matched_groups=[],
-                value_amount=Decimal("50000.00"),
-                deadline_offset_days=30,
-                published_offset_days=-5,
-                first_seen_offset_minutes=50,
-            )
-        )
-        rows.append(
-            make_tender(
-                source_name="goszakup",
-                external_id="g-6",
-                title="Cleaning services contract",
-                buyer_name="Ministry of Education",
-                matched_groups=[],
-                value_amount=None,
-                value_currency=None,
-                deadline_offset_days=-1,
-                published_offset_days=-7,
-                first_seen_offset_minutes=60,
-            )
-        )
-        rows.append(
-            make_tender(
                 source_name="mitwork",
                 external_id="194361",
                 title="Consulting services for assessment/analysis of activities",
                 buyer_name='Joint-Stock Company "SOCIAL-ENTREPRENEURSHIP CORPORATION "ALMATY"',
+                matched_groups=["credit_rating"],
+                match_details={
+                    "credit_rating": {
+                        "matched_phrases": ["seeded detail fixture"],
+                        "matched_tokens": [],
+                    }
+                },
                 value_amount=Decimal("11000000.00"),
                 value_currency="KZT",
                 deadline_offset_days=8,
@@ -420,6 +400,13 @@ async def seeded_session(
                 external_id="228344",
                 title="Текущий ремонт административного здания",
                 buyer_name='РГУ "НАЦИОНАЛЬНЫЙ БАНК РЕСПУБЛИКИ КАЗАХСТАН"',
+                matched_groups=["credit_rating"],
+                match_details={
+                    "credit_rating": {
+                        "matched_phrases": ["seeded detail fixture"],
+                        "matched_tokens": [],
+                    }
+                },
                 value_amount=Decimal("7964231.03"),
                 value_currency="KZT",
                 deadline_offset_days=4,
@@ -491,6 +478,13 @@ async def seeded_session(
                 external_id="39385974",
                 title="Закуп строительных материалов для благоустройства территории",
                 buyer_name='ГУ "Аппарат акима города Алматы"',
+                matched_groups=["credit_rating"],
+                match_details={
+                    "credit_rating": {
+                        "matched_phrases": ["seeded detail fixture"],
+                        "matched_tokens": [],
+                    }
+                },
                 value_amount=Decimal("22700000.00"),
                 value_currency="KZT",
                 deadline_offset_days=4,
@@ -615,6 +609,13 @@ async def seeded_session(
                 external_id="1220290",
                 title="Работы по капитальному ремонту нежилых зданий/сооружений/помещений (13 лотов)",
                 buyer_name='Акционерное общество "Алатау Жарық Компаниясы"',
+                matched_groups=["credit_rating"],
+                match_details={
+                    "credit_rating": {
+                        "matched_phrases": ["seeded detail fixture"],
+                        "matched_tokens": [],
+                    }
+                },
                 value_amount=Decimal("34191869.47"),
                 value_currency="KZT",
                 deadline_offset_days=1,
@@ -748,6 +749,13 @@ async def seeded_session(
                 external_id="2085996",
                 title="Лист стальной г/к",
                 buyer_name="АО «GALANZ bottlers»",
+                matched_groups=["credit_rating"],
+                match_details={
+                    "credit_rating": {
+                        "matched_phrases": ["seeded detail fixture"],
+                        "matched_tokens": [],
+                    }
+                },
                 value_amount=Decimal("1550000.00"),
                 value_currency="KZT",
                 deadline_offset_days=2,
@@ -920,63 +928,6 @@ async def seeded_session(
                 first_seen_offset_minutes=80,
             )
         )
-        rows.append(
-            make_tender(
-                source_name="xt_xarid",
-                external_id="x-3",
-                title="IT infrastructure modernisation",
-                buyer_name="Ministry of Digital Development",
-                country=Country.UZ,
-                value_amount=Decimal("500000.00"),
-                value_currency="UZS",
-                deadline_offset_days=25,
-                published_offset_days=-3,
-                first_seen_offset_minutes=90,
-            )
-        )
-        rows.append(
-            make_tender(
-                source_name="xt_xarid",
-                external_id="x-4",
-                title="Construction of administrative building",
-                buyer_name="Tashkent Municipality",
-                country=Country.UZ,
-                value_amount=Decimal("8000000.00"),
-                value_currency="UZS",
-                deadline_offset_days=40,
-                published_offset_days=-5,
-                first_seen_offset_minutes=100,
-            )
-        )
-        rows.append(
-            make_tender(
-                source_name="xt_xarid",
-                external_id="x-5",
-                title="Catering for state events",
-                buyer_name="Cabinet of Ministers",
-                country=Country.UZ,
-                value_amount=Decimal("150000.00"),
-                value_currency="UZS",
-                deadline_offset_days=60,
-                published_offset_days=-10,
-                first_seen_offset_minutes=110,
-            )
-        )
-        rows.append(
-            make_tender(
-                source_name="xt_xarid",
-                external_id="x-6",
-                title="Translation services",
-                buyer_name="Ministry of Foreign Affairs",
-                country=Country.UZ,
-                value_amount=None,
-                value_currency=None,
-                deadline_offset_days=None,
-                published_offset_days=-15,
-                first_seen_offset_minutes=120,
-            )
-        )
-
         session.add_all(rows)
         await session.commit()
 

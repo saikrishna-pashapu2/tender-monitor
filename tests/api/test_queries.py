@@ -11,7 +11,6 @@ from tender_monitor.api.queries import (
     TenderFilters,
     get_tender,
     list_liked_tenders,
-    list_related_tenders,
     list_sources,
     list_tenders,
 )
@@ -54,7 +53,7 @@ async def test_list_tenders_filter_source(seeded_session: AsyncSession) -> None:
         1,
         25,
     )
-    assert result.total == 6
+    assert result.total == 4
     assert all(row.source_name == "goszakup" for row in result.rows)
 
 
@@ -82,12 +81,8 @@ async def test_list_tenders_filter_matched_none(seeded_session: AsyncSession) ->
         1,
         25,
     )
-    seeded_tenders = (
-        await seeded_session.execute(select(Tender))
-    ).scalars().all()
-    expected_total = sum(1 for row in seeded_tenders if not row.matched_groups)
-    assert result.total == expected_total
-    assert all(row.matched_groups == [] for row in result.rows)
+    assert result.total == 0
+    assert result.rows == []
 
 
 async def test_list_tenders_filter_specific_group(
@@ -128,7 +123,7 @@ async def test_list_tenders_search_matches_translated_title(
 ) -> None:
     row = (
         await seeded_session.execute(
-            select(Tender).where(Tender.title == "Office supplies for the ministry")
+            select(Tender).where(Tender.title == "Credit risk modelling")
         )
     ).scalar_one()
     row.title_en = "Translated title only marker"
@@ -227,12 +222,10 @@ async def test_list_tenders_pagination_returns_correct_slice(
     page1 = await list_tenders(seeded_session, TenderFilters(), "newest", 1, 5)
     page2 = await list_tenders(seeded_session, TenderFilters(), "newest", 2, 5)
     page3 = await list_tenders(seeded_session, TenderFilters(), "newest", 3, 5)
-    page4 = await list_tenders(seeded_session, TenderFilters(), "newest", 4, 5)
     assert len(page1.rows) == 5
     assert len(page2.rows) == 5
-    assert len(page3.rows) == 5
-    assert len(page4.rows) == page1.total - 15
-    ids = {row.id for row in page1.rows + page2.rows + page3.rows + page4.rows}
+    assert len(page3.rows) == page1.total - 10
+    ids = {row.id for row in page1.rows + page2.rows + page3.rows}
     assert len(ids) == page1.total
 
 
@@ -265,33 +258,6 @@ async def test_get_tender_unknown_id_returns_none(
     assert result is None
 
 
-async def test_list_related_tenders_returns_same_source_only(
-    seeded_session: AsyncSession,
-) -> None:
-    one = (await seeded_session.execute(select(Tender).limit(1))).scalar_one()
-    related = await list_related_tenders(seeded_session, one.source_name, one.id)
-    assert len(related) >= 1
-    for r in related:
-        assert r.source_name == one.source_name
-        assert r.id != one.id
-
-
-async def test_list_related_tenders_includes_unmatched(
-    seeded_session: AsyncSession,
-) -> None:
-    # goszakup seed has 4 matched + 2 unmatched. Sidebar must surface
-    # both classes — the home list filters matched-only, here we don't.
-    one = (
-        await seeded_session.execute(
-            select(Tender).where(Tender.source_name == "goszakup").limit(1)
-        )
-    ).scalar_one()
-    related = await list_related_tenders(seeded_session, "goszakup", one.id)
-    assert len(related) == 5  # 6 goszakup rows, minus the excluded one
-    assert any(r.matched_groups == [] for r in related)
-    assert any(r.matched_groups != [] for r in related)
-
-
 async def test_list_liked_tenders_orders_by_recent_like(
     seeded_session: AsyncSession,
 ) -> None:
@@ -299,7 +265,7 @@ async def test_list_liked_tenders_orders_by_recent_like(
         await seeded_session.execute(
             select(Tender)
             .where(Tender.source_name == "goszakup")
-            .where(Tender.external_id.in_(["g-1", "g-5"]))
+            .where(Tender.external_id.in_(["g-1", "g-4"]))
             .order_by(Tender.external_id.asc())
         )
     ).scalars().all()
@@ -325,7 +291,7 @@ async def test_list_liked_tenders_orders_by_recent_like(
     result = await list_liked_tenders(seeded_session)
 
     assert result.total == 2
-    assert [row.external_id for row in result.rows] == ["g-5", "g-1"]
+    assert [row.external_id for row in result.rows] == ["g-4", "g-1"]
     assert result.rows[0].likes[0].team_member.display_name == "Sai Kumar"
 
 

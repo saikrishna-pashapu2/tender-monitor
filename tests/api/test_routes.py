@@ -95,8 +95,7 @@ def test_list_endpoint_applies_filters_from_query(client: TestClient) -> None:
 def test_list_endpoint_filter_matched_any(client: TestClient) -> None:
     resp = client.get("/?matched=any", headers={"HX-Request": "true"})
     assert resp.status_code == 200
-    # "Office supplies" is an unmatched seed row; should be filtered out.
-    assert "Office supplies" not in resp.text
+    assert "Credit rating audit services" in resp.text
 
 
 def test_detail_endpoint_returns_404_for_unknown_id(client: TestClient) -> None:
@@ -352,8 +351,8 @@ def test_like_tender_returns_404_for_unknown_tender(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
-def test_liked_page_includes_unmatched_liked_tenders(client: TestClient) -> None:
-    tender_id = _unmatched_goszakup_tender_id(client)
+def test_liked_page_includes_liked_tenders(client: TestClient) -> None:
+    tender_id = _credit_rating_tender_id(client)
     resp = client.post(
         f"/tenders/{tender_id}/likes",
         data={"member_name": "Aisha", "next_url": "/liked"},
@@ -363,7 +362,7 @@ def test_liked_page_includes_unmatched_liked_tenders(client: TestClient) -> None
 
     liked = client.get("/liked")
     assert liked.status_code == 200
-    assert "Office supplies for the ministry" in liked.text
+    assert "Credit rating audit services" in liked.text
     assert "Aisha" in liked.text
 
 
@@ -489,14 +488,11 @@ def test_detail_endpoint_renders_xt_xarid_source_layout(
     assert "climate-strategy.pdf" in resp.text
 
 
-def test_detail_endpoint_renders_related_sidebar(client: TestClient) -> None:
-    # The seeded credit-rating tender lives on the goszakup source,
-    # which has 6 total rows. The "More from goszakup" sidebar should
-    # render with the other 5.
+def test_detail_endpoint_does_not_render_related_sidebar(client: TestClient) -> None:
     tender_id = _credit_rating_tender_id(client)
     resp = client.get(f"/tenders/{tender_id}")
     assert resp.status_code == 200
-    assert "More from goszakup" in resp.text
+    assert "More from" not in resp.text
 
 
 def test_detail_endpoint_renders_documents_section(client: TestClient) -> None:
@@ -508,17 +504,6 @@ def test_detail_endpoint_renders_documents_section(client: TestClient) -> None:
     assert "Open file" in resp.text
 
 
-def test_detail_endpoint_includes_unmatched_in_sidebar(client: TestClient) -> None:
-    # ``g-5`` (Office supplies) is the unmatched goszakup row. It must
-    # NOT show on the home list (default matched-only) but MUST appear
-    # in the related sidebar of any other goszakup tender's detail page.
-    tender_id = _credit_rating_tender_id(client)
-    home = client.get("/?matched=any", headers={"HX-Request": "true"})
-    assert "Office supplies" not in home.text
-    detail = client.get(f"/tenders/{tender_id}")
-    assert "Office supplies" in detail.text
-
-
 def test_api_tenders_returns_json(client: TestClient) -> None:
     resp = client.get("/api/tenders")
     assert resp.status_code == 200
@@ -526,25 +511,21 @@ def test_api_tenders_returns_json(client: TestClient) -> None:
 
 
 def test_api_tenders_response_shape(client: TestClient) -> None:
-    # ``matched=all`` opts out of the default matched-only filter so
-    # this test still asserts the full seeded corpus.
-    resp = client.get("/api/tenders?per_page=5&matched=all")
+    resp = client.get("/api/tenders?per_page=5")
     body = resp.json()
     assert set(body.keys()) >= {"tenders", "total", "page", "per_page", "pages"}
-    assert body["total"] == 17
+    assert body["total"] == 11
     assert body["per_page"] == 5
-    assert body["pages"] == 4
+    assert body["pages"] == 3
     assert len(body["tenders"]) == 5
     sample = body["tenders"][0]
     assert {"id", "source_name", "external_id", "title", "country"} <= set(sample.keys())
 
 
 def test_api_tenders_default_returns_matched_only(client: TestClient) -> None:
-    # Without an explicit ``matched`` param the API hides unmatched
-    # tenders. 6 of 17 seeded rows have matched_groups.
     resp = client.get("/api/tenders?per_page=100")
     body = resp.json()
-    assert body["total"] == 6
+    assert body["total"] == 11
     for entry in body["tenders"]:
         assert entry["matched_groups"], (
             "default API view should only return matched tenders, "
@@ -552,45 +533,11 @@ def test_api_tenders_default_returns_matched_only(client: TestClient) -> None:
         )
 
 
-def test_list_endpoint_default_hides_unmatched(client: TestClient) -> None:
-    # The unmatched seed row ``g-5`` (Office supplies) must NOT appear
-    # in the default home view.
-    resp = client.get("/", headers={"HX-Request": "true"})
-    assert resp.status_code == 200
-    assert "Office supplies" not in resp.text
-
-
-def test_list_endpoint_matched_all_shows_unmatched(client: TestClient) -> None:
-    # Explicit opt-out brings unmatched rows back.
-    resp = client.get("/?matched=all", headers={"HX-Request": "true"})
-    assert resp.status_code == 200
-    assert "Office supplies" in resp.text
-
-
-def test_list_endpoint_exposes_hidden_dev_all_tenders_option(
-    client: TestClient,
-) -> None:
+def test_list_endpoint_has_no_unmatched_dev_scope(client: TestClient) -> None:
     resp = client.get("/")
     assert resp.status_code == 200
-    assert (
-        '<details class="group border-t border-slate-200 '
-        'pt-4 text-sm text-slate-500">'
-    ) in resp.text
-    assert 'name="matched"' in resp.text
-    assert "Developer" in resp.text
-    assert "All tenders" in resp.text
-
-
-def test_list_endpoint_marks_dev_all_tenders_option_active(
-    client: TestClient,
-) -> None:
-    resp = client.get("/?matched=all")
-    assert resp.status_code == 200
-    assert (
-        '<details class="group border-t border-slate-200 '
-        'pt-4 text-sm text-slate-500" open>'
-    ) in resp.text
-    assert '<option value="all" selected>All tenders</option>' in resp.text
+    assert "Dev view for checking unmatched ingested rows" not in resp.text
+    assert 'id="matched-mode"' not in resp.text
 
 
 def test_api_tender_detail_returns_tender_read_shape(client: TestClient) -> None:
@@ -647,17 +594,8 @@ def _credit_rating_tender_id(client: TestClient) -> str:
     raise AssertionError("seeded credit-rating tender g-1 was not returned")
 
 
-def _unmatched_goszakup_tender_id(client: TestClient) -> str:
-    resp = client.get("/api/tenders?source=goszakup&matched=all&per_page=100")
-    resp.raise_for_status()
-    for entry in resp.json()["tenders"]:
-        if entry["external_id"] == "g-5":
-            return entry["id"]
-    raise AssertionError("seeded unmatched tender g-5 was not returned")
-
-
 def _xt_xarid_tender_id(client: TestClient) -> str:
-    resp = client.get("/api/tenders?source=xt_xarid&matched=all&per_page=100")
+    resp = client.get("/api/tenders?source=xt_xarid&per_page=100")
     resp.raise_for_status()
     for entry in resp.json()["tenders"]:
         if entry["external_id"] == "x-1":
@@ -666,7 +604,7 @@ def _xt_xarid_tender_id(client: TestClient) -> str:
 
 
 def _mitwork_tender_id(client: TestClient) -> str:
-    resp = client.get("/api/tenders?source=mitwork&matched=all&per_page=100")
+    resp = client.get("/api/tenders?source=mitwork&per_page=100")
     resp.raise_for_status()
     for entry in resp.json()["tenders"]:
         if entry["external_id"] == "194361":
@@ -675,7 +613,7 @@ def _mitwork_tender_id(client: TestClient) -> str:
 
 
 def _national_bank_tender_id(client: TestClient) -> str:
-    resp = client.get("/api/tenders?source=national_bank&matched=all&per_page=100")
+    resp = client.get("/api/tenders?source=national_bank&per_page=100")
     resp.raise_for_status()
     for entry in resp.json()["tenders"]:
         if entry["external_id"] == "228344":
@@ -684,7 +622,7 @@ def _national_bank_tender_id(client: TestClient) -> str:
 
 
 def _zakup_unified_tender_id(client: TestClient) -> str:
-    resp = client.get("/api/tenders?source=zakup_unified&matched=all&per_page=100")
+    resp = client.get("/api/tenders?source=zakup_unified&per_page=100")
     resp.raise_for_status()
     for entry in resp.json()["tenders"]:
         if entry["external_id"] == "39385974":
@@ -693,7 +631,7 @@ def _zakup_unified_tender_id(client: TestClient) -> str:
 
 
 def _samruk_kazyna_tender_id(client: TestClient) -> str:
-    resp = client.get("/api/tenders?source=samruk_kazyna&matched=all&per_page=100")
+    resp = client.get("/api/tenders?source=samruk_kazyna&per_page=100")
     resp.raise_for_status()
     for entry in resp.json()["tenders"]:
         if entry["external_id"] == "1220290":
@@ -702,7 +640,7 @@ def _samruk_kazyna_tender_id(client: TestClient) -> str:
 
 
 def _ets_tender_tender_id(client: TestClient) -> str:
-    resp = client.get("/api/tenders?source=ets_tender&matched=all&per_page=100")
+    resp = client.get("/api/tenders?source=ets_tender&per_page=100")
     resp.raise_for_status()
     for entry in resp.json()["tenders"]:
         if entry["external_id"] == "2085996":

@@ -17,7 +17,6 @@ from tender_monitor.api.queries import (
     TenderFilters,
     get_tender,
     list_liked_tenders,
-    list_related_tenders,
     list_sources,
     list_tenders,
     normalize_pagination,
@@ -1345,9 +1344,8 @@ async def tender_list(
     session: AsyncSession = Depends(get_session),
     country: list[str] = Query(default_factory=list),
     source: list[str] = Query(default_factory=list),
-    # Default to matched-only — the product brief says the UI surfaces
-    # ESG / credit-rating-relevant tenders, not the entire procurement
-    # firehose. Pass ``?matched=all`` to opt out of the filter.
+    # Default to matched-only; ingestion now persists only matched tenders,
+    # so the list view represents the stored tender corpus.
     matched: str = "any",
     group: list[str] = Query(default_factory=list),
     q: str | None = None,
@@ -1518,8 +1516,6 @@ async def _build_tender_detail_context(
         source_groups = _extract_source_groups(tender.raw_json)
         source_sections = _extract_source_sections(tender.raw_json)
 
-    related = await list_related_tenders(session, tender.source_name, tender.id, limit=12)
-
     return {
         "tender": tender,
         "lots": lots,
@@ -1534,7 +1530,6 @@ async def _build_tender_detail_context(
         "samruk_kazyna_view": samruk_kazyna_view,
         "ets_tender_view": ets_tender_view,
         "xt_xarid_view": xt_xarid_view,
-        "related": related,
         "team_members": team_members,
         "share_sent": share_sent,
         "share_error": share_error,

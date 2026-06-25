@@ -5,10 +5,10 @@ Canonical project doc. Read this before making changes.
 ## Project overview
 
 `tender-monitor` watches public procurement tender platforms in Kazakhstan
-and Uzbekistan — 14 sources total. Every 30–60
+and Uzbekistan. Every 30–60
 minutes the system pulls new tenders from each source, filters them against
-ESG and credit-rating keyword groups, stores everything in Postgres, and
-pushes matches to a Telegram group and an email distribution list. A FastAPI
+ESG and credit-rating keyword groups, stores matching tenders in Postgres,
+and pushes matches to a Telegram group and an email distribution list. A FastAPI
 service exposes the data to the existing internal portal, which already has
 a "Tenders" tab.
 
@@ -22,7 +22,7 @@ Three independent processes run on a single VPS and share one Postgres
 database:
 
 - **scheduler** — runs all connectors on a recurring interval, normalizes
-  tenders, writes them to the DB, and runs keyword matching.
+  tenders, runs keyword matching, and writes only matches to the DB.
 - **notifier** — picks up matched tenders that haven't been sent yet and
   fans them out to Telegram and email.
 - **api** — FastAPI service that serves filtered tender data to the
@@ -34,16 +34,15 @@ in-process queue, no Redis, no message broker.
 ## Data flow
 
 ```
-source → connector → normalize → DB → matcher → notifier
-                                   ↘ api → portal
+source → connector → normalize → matcher → DB → notifier
+                                             ↘ api → portal
 ```
 
 1. **source** — a tender platform (e.g. goszakup.gov.kz).
 2. **connector** — source-specific code that fetches raw payloads.
 3. **normalize** — connector maps raw payload to our canonical Tender shape.
-4. **DB** — Postgres is the system of record; dedup happens here.
-5. **matcher** — applies keyword groups from `config/keywords.yaml`,
-   produces match rows.
+4. **matcher** — applies keyword groups from `config/keywords.yaml`.
+5. **DB** — Postgres stores matched tenders; dedup happens here.
 6. **notifier** — reads unsent matches and dispatches Telegram + email.
 7. **api** — read-only endpoints for the portal.
 
@@ -98,9 +97,9 @@ Four tables, all in Postgres:
   metadata, scraping cadence, and per-source health counters
   (`last_run_at`, `last_success_at`, `consecutive_failures`,
   `total_tenders_seen`). Keyed by short `name` (e.g. `goszakup`).
-- **`tenders`** — the canonical record for every tender we've ever seen,
-  one row per `(source_name, external_id)`. That pair is the system's
-  uniqueness invariant; the matcher and notifier rely on it.
+- **`tenders`** — the canonical record for every matched tender we've
+  saved, one row per `(source_name, external_id)`. That pair is the
+  system's uniqueness invariant; the scheduler and notifier rely on it.
 - **`feedback`** — operator feedback on individual tenders
   (`good_match`, `bad_match`, `missed`). Free-text `created_by` because
   there is no auth; the portal supplies the identifier.
@@ -110,16 +109,16 @@ Four tables, all in Postgres:
 
 Two invariants worth remembering:
 
-1. **`raw_json` is always populated.** Connectors store the unmodified
-   payload they received from the source, even when normalization
-   succeeds. It is the single source of truth for everything we saw at
-   ingest time and is GIN-indexed for ad-hoc queries.
-2. **Match results, AI fields, and `external_message_id` are nullable
-   and filled in by later pipeline stages**, not on insert. A tender
-   row exists as soon as the connector sees it; the matcher fills
-   `matched_groups` / `match_details`, the LLM stage fills
-   `ai_relevance_score` / `ai_summary` / `ai_processed_at`, and the
-   notifier writes `notification_logs` rows after dispatch.
+1. **`raw_json` is always populated on stored tenders.** Connectors pass
+   the unmodified payload they received from the source through
+   normalization. For tenders that match and get saved, `raw_json` is the
+   single source of truth for everything we saw at ingest time and is
+   GIN-indexed for ad-hoc queries.
+2. **Only matched tenders are persisted.** The scheduler runs keyword
+   matching before the DB upsert. New unmatched rows are skipped, and an
+   existing tender that no longer matches is deleted. AI fields and
+   `external_message_id` are nullable and filled in by later pipeline
+   stages; the notifier writes `notification_logs` rows after dispatch.
 
 `canonical_id` is a self-FK on `tenders` that supports cross-source dedup
 (e.g. the same tender appearing on `goszakup` and `samruk-kazyna`). It is
@@ -128,18 +127,18 @@ sets the field later.
 
 ## Data philosophy
 
-`raw_json` is the source of truth for every tender; the normalized columns
-are projections of it that exist purely so the matcher, API, and indexes
-can work efficiently. There is one `tenders` table for all 14 sources, not
-one table per source — this is what keeps the matcher, notifier, API, and
-cross-source dedup straightforward instead of fanning out into 16 parallel
-implementations. New fields that appear in a source's API don't trigger a
-migration: they land in `raw_json` automatically, and we project them into
-a typed column later only if a query or notification template actually
-needs them. Per-source tables would only be justified if sources
-represented fundamentally different kinds of objects (tenders vs. live
-auctions vs. RFIs); all 14 sources here are tenders, so a single shared
-table is the right shape.
+`raw_json` is the source of truth for every stored tender; the normalized
+columns are projections of it that exist purely so the matcher, API, and
+indexes can work efficiently. There is one `tenders` table for all current
+tender sources, not one table per source — this is what keeps the matcher,
+notifier, API, and cross-source dedup straightforward instead of fanning out
+into parallel implementations. New fields that appear in a source's API
+don't trigger a migration: they land in `raw_json` automatically for saved
+matches, and we project them into a typed column later only if a query or
+notification template actually needs them. Per-source tables would only be
+justified if sources represented fundamentally different kinds of objects
+(tenders vs. live auctions vs. RFIs); the current sources here are tenders,
+so a single shared table is the right shape.
 
 ## Connector contract
 
@@ -229,11 +228,12 @@ surfaces a parse or validation error on a malformed YAML.
 
 The scheduler is layered into three modules in
 `src/tender_monitor/scheduler/`. `upsert.py` is the pure DB-write
-boundary: take a `TenderUpsert` + `MatchResult`, produce an
+boundary: take a matched `TenderUpsert` + `MatchResult`, produce an
 `UpsertResult`, no orchestration. `ingest.py` is the per-source
 orchestrator: load source, compute the `since` cursor, run the
-connector, run the matcher, call `upsert_tender` for each row, and
-update source health — one `ingest_source(name)` call equals one run.
+connector, run the matcher, upsert matched rows, delete existing rows
+that no longer match, and update source health — one `ingest_source(name)`
+call equals one run.
 `runner.py` is APScheduler plumbing: one `IntervalTrigger` job per
 enabled source, plus signal-driven graceful shutdown. The CLI wires
 `run-once <source>` directly to `ingest_source` and `run-scheduler`
@@ -252,8 +252,8 @@ emit a `scheduler.tender.changed` INFO log and append a JSONB entry to
 `tenders.change_log` shaped as `{"at": iso, "fields": {field:
 {"old": ..., "new": ...}}}`. Other field updates apply silently. The
 matcher's results (`matched_groups`, `match_details`) are overwritten
-on every run rather than tracked — keyword YAML changes should take
-effect on the next ingest without producing a change-log entry per
+on every matched upsert rather than tracked — keyword YAML changes should
+take effect on the next ingest without producing a change-log entry per
 tender. `raw_json` is also overwritten silently for the same reason
 (deep-diffing a 50 KB payload per tender would be all noise); the
 TRACKED_FIELDS whitelist is the v1 surface area for "this tender
@@ -273,9 +273,9 @@ ingest session has been rolled back, but the failure metadata is
 durable — and then re-raised. The scheduler's job wrapper in
 `runner.py` catches the re-raise at the boundary so one bad source
 never kills the others. Inside the per-tender loop, a buggy matcher
-is caught defensively: we log `scheduler.matcher_failed` and treat
-the row as no-match, so a bad keyword regex can never cost us a
-tender row.
+is caught defensively: we log `scheduler.matcher_failed`, skip that
+row, and do not delete any existing tender for that row based on a
+failed match attempt.
 
 The scheduler passes a `known_external_ids` hint to each connector
 before `fetch_latest`. It's the set of `external_id` values for that

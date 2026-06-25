@@ -27,7 +27,9 @@ T0 = datetime(2026, 5, 8, 12, 0, tzinfo=UTC)
 SOURCE_NAME = "_fake_ingest"
 
 
-def _fake_upsert(external_id: str = "F-1", title: str = "Fake tender") -> TenderUpsert:
+def _fake_upsert(
+    external_id: str = "F-1", title: str = "ESG audit services"
+) -> TenderUpsert:
     return TenderUpsert(
         source_name=SOURCE_NAME,
         external_id=external_id,
@@ -244,7 +246,7 @@ async def test_ingest_subsequent_since_uses_last_run_at(
     assert _FakeConnector.seen_since == [previous_run]
 
 
-async def test_ingest_matcher_exception_does_not_lose_tender(
+async def test_ingest_matcher_exception_skips_persistence(
     scheduler_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     await _make_source(scheduler_session_factory)
@@ -262,15 +264,41 @@ async def test_ingest_matcher_exception_does_not_lose_tender(
             now=_frozen_now(T0),
         )
 
-    assert result.created == 2
+    assert result.created == 0
     assert result.matched == 0
 
     async with scheduler_session_factory() as session:
         rows = (await session.execute(select(Tender))).scalars().all()
-        assert len(rows) == 2
-        for row in rows:
-            assert row.matched_groups == []
-            assert row.match_details is None
+        assert rows == []
+
+
+async def test_ingest_deletes_existing_tender_that_no_longer_matches(
+    scheduler_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await _make_source(scheduler_session_factory)
+    _FakeConnector.reset(tenders=[_fake_upsert("F-1")])
+    first = await ingest_source(
+        SOURCE_NAME,
+        session_factory=scheduler_session_factory,
+        now=_frozen_now(T0),
+    )
+    assert first.created == 1
+    assert first.matched == 1
+
+    _FakeConnector.reset(tenders=[_fake_upsert("F-1", title="Plain procurement")])
+    second = await ingest_source(
+        SOURCE_NAME,
+        session_factory=scheduler_session_factory,
+        now=_frozen_now(T0 + timedelta(hours=1)),
+    )
+
+    assert second.created == 0
+    assert second.deleted == 1
+    assert second.matched == 0
+
+    async with scheduler_session_factory() as session:
+        rows = (await session.execute(select(Tender))).scalars().all()
+        assert rows == []
 
 
 async def test_ingest_translates_title_before_matching_and_saving(
@@ -340,7 +368,7 @@ async def test_ingest_reuses_stored_translation_for_unchanged_title(
         assert row.title_translated_at == T0
 
 
-async def test_ingest_translation_failure_saves_tender_without_match(
+async def test_ingest_translation_failure_skips_unmatched_tender(
     scheduler_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     await _make_source(scheduler_session_factory)
@@ -353,14 +381,12 @@ async def test_ingest_translation_failure_saves_tender_without_match(
         title_translator=_FailingTitleTranslator(),
     )
 
-    assert result.created == 1
+    assert result.created == 0
     assert result.matched == 0
 
     async with scheduler_session_factory() as session:
-        row = (await session.execute(select(Tender))).scalar_one()
-        assert row.title == "Plain procurement"
-        assert row.title_en is None
-        assert row.matched_groups == []
+        rows = (await session.execute(select(Tender))).scalars().all()
+        assert rows == []
 
 
 async def test_ingest_change_logged_at_info_level(
@@ -369,7 +395,7 @@ async def test_ingest_change_logged_at_info_level(
 ) -> None:
     await _make_source(scheduler_session_factory)
 
-    initial = _fake_upsert("F-1", title="Initial title")
+    initial = _fake_upsert("F-1", title="ESG initial title")
     initial = initial.model_copy(
         update={"deadline_at": datetime(2026, 6, 1, 12, 0, tzinfo=UTC)}
     )
@@ -424,6 +450,10 @@ async def _seed_tender(
                 title=f"seed-{external_id}",
                 country=Country.KZ,
                 source_url=f"https://example.test/{external_id}",
+                matched_groups=["esg"],
+                match_details={
+                    "esg": {"matched_phrases": ["ESG"], "matched_tokens": []}
+                },
                 raw_json={"id": external_id},
                 first_seen_at=last_seen_at,
                 last_seen_at=last_seen_at,

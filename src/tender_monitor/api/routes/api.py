@@ -61,7 +61,7 @@ async def api_list_tenders(
     session: AsyncSession = Depends(get_session),
     country: list[str] = Query(default_factory=list),
     source: list[str] = Query(default_factory=list),
-    # Same default as the HTML route: matched-only unless ``matched=all``.
+    # Same default as the HTML route: matched-only.
     matched: str = "any",
     group: list[str] = Query(default_factory=list),
     q: str | None = None,
