@@ -127,7 +127,7 @@ def make_tender(
 async def seeded_session(
     api_session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncIterator[AsyncSession]:
-    """Seed a deterministic dataset: 9 sources, 19 tenders, mixed flags.
+    """Seed a deterministic dataset: 8 sources, 18 tenders, mixed flags.
 
     Layout:
       - 6 KZ tenders on ``goszakup`` (4 matched, 2 unmatched)
@@ -138,7 +138,6 @@ async def seeded_session(
       - 1 KZ tender on ``zakup_unified`` for source-specific detail rendering
       - 1 KZ tender on ``samruk_kazyna`` for source-specific detail rendering
       - 1 UZ tender on ``tendersinfo`` for source-specific detail rendering
-      - 1 UZ tender on ``uzbekistan_tenders`` for source-specific detail rendering
       - mixed deadlines (past, near, far) and values
     """
     async with api_session_factory() as session:
@@ -184,12 +183,6 @@ async def seeded_session(
                     display_name="TendersInfo",
                     country=Country.KZ,
                     base_url="https://www.tendersinfo.com",
-                ),
-                make_source(
-                    "uzbekistan_tenders",
-                    display_name="UzbekistanTenders.com",
-                    country=Country.UZ,
-                    base_url="https://www.uzbekistantenders.com",
                 ),
                 make_source(
                     "xt_xarid",
@@ -406,92 +399,6 @@ async def seeded_session(
                             ),
                             "description_ru": None,
                             "description_en": None,
-                        }
-                    ],
-                },
-            )
-        )
-        rows.append(
-            make_tender(
-                source_name="uzbekistan_tenders",
-                external_id="86ddab7",
-                title="Provision of services for assigning an international credit rating",
-                buyer_name="Central Bank of the Republic of Uzbekistan",
-                country=Country.UZ,
-                matched_groups=["credit_rating"],
-                match_details={
-                    "credit_rating": {
-                        "matched_phrases": ["credit rating"],
-                        "matched_tokens": [],
-                    }
-                },
-                value_amount=Decimal("1500.00"),
-                value_currency="USD",
-                deadline_offset_days=12,
-                published_offset_days=-1,
-                first_seen_offset_minutes=68,
-                raw_json={
-                    "external_id": "86ddab7",
-                    "title": (
-                        "Provision of services for assigning an international "
-                        "credit rating"
-                    ),
-                    "detail_url": (
-                        "https://www.uzbekistantenders.com/tender/"
-                        "provision-services-assigning-international-credit-"
-                        "rating-86ddab7.php"
-                    ),
-                    "deadline_text": "30 May 2026",
-                    "value_text": "Refer Document",
-                    "detail_meta_description": (
-                        "Provision of services for assigning an international "
-                        "credit rating, Ref Id: 86ddab7"
-                    ),
-                    "detail_description": (
-                        "Provision of services for assigning an international "
-                        "credit rating for sovereign bond issuance."
-                    ),
-                    "detail_identifier": "86ddab7",
-                    "published_text_detail": "2026-05-17",
-                    "deadline_text_detail": "2026-05-30",
-                    "detail_category": "Finance and Related Services",
-                    "detail_price": "1500",
-                    "detail_price_currency": "USD",
-                    "buyer_name_detail": (
-                        "Central Bank of the Republic of Uzbekistan"
-                    ),
-                    "_detail_jsonld": {
-                        "@context": "https://schema.org",
-                        "@type": "Offer",
-                        "description": (
-                            "Provision of services for assigning an "
-                            "international credit rating for sovereign bond "
-                            "issuance."
-                        ),
-                        "identifier": "86ddab7",
-                        "availabilityStarts": "2026-05-17",
-                        "availabilityEnds": "2026-05-30",
-                        "category": "Finance and Related Services",
-                        "price": "1500",
-                        "priceCurrency": "USD",
-                        "offeredBy": {
-                            "@type": "Organization",
-                            "name": (
-                                "Central Bank of the Republic of Uzbekistan"
-                            ),
-                        },
-                    },
-                    "_lots": [
-                        {
-                            "name_en": (
-                                "Provision of services for assigning an "
-                                "international credit rating"
-                            ),
-                            "description_en": (
-                                "International credit rating services for "
-                                "sovereign bond issuance and investor "
-                                "communications."
-                            ),
                         }
                     ],
                 },

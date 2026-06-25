@@ -55,7 +55,7 @@
   {%- endmacro %}
 
   {% set color = tender.source_name|source_color %}
-  {% set has_source_specific_view = uzex_view or goszakup_view or mitwork_view or national_bank_view or zakup_unified_view or samruk_kazyna_view or ets_tender_view or xt_xarid_view or tendersinfo_view or uzbekistan_tenders_view %}
+  {% set has_source_specific_view = uzex_view or goszakup_view or mitwork_view or national_bank_view or zakup_unified_view or samruk_kazyna_view or ets_tender_view or xt_xarid_view or tendersinfo_view %}
 
   <a href="#"
      onclick="history.back(); return false;"
@@ -444,10 +444,6 @@
 
       {% if tendersinfo_view %}
         {% include "tenders/_tendersinfo_detail.html" %}
-      {% endif %}
-
-      {% if uzbekistan_tenders_view %}
-        {% include "tenders/_uzbekistan_tenders_detail.html" %}
       {% endif %}
 
       {% if documents and not has_source_specific_view %}

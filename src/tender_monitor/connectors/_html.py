@@ -156,34 +156,6 @@ def parse_kz_local_datetime_dmy(text: str | None) -> datetime | None:
     return localized.astimezone(UTC)
 
 
-def parse_full_month_date(text: str | None) -> datetime | None:
-    """Parse "DD Month YYYY" / "DD Mon YYYY" at UTC midnight.
-
-    UzbekistanTenders.com renders deadlines either as full English
-    month names (``"30 May 2026"``) or abbreviated (``"02 Jun 2026"``)
-    depending on month length. We try the full-name format first,
-    then fall back to the 3-letter abbreviation; that order matters
-    because ``%B`` rejects ``"Jun"`` and ``%b`` accepts ``"May"``
-    (3 letters = same form in both modes), so a both-formats parser
-    written ``%B`` first preserves the more informative spelling
-    when both match.
-
-    Returns None on empty / missing / unparseable input.
-    """
-    if not text:
-        return None
-    cleaned = text.strip()
-    if not cleaned:
-        return None
-    for fmt in ("%d %B %Y", "%d %b %Y"):
-        try:
-            parsed = datetime.strptime(cleaned, fmt)
-        except ValueError:
-            continue
-        return parsed.replace(tzinfo=UTC)
-    return None
-
-
 def parse_dmy_month_name(text: str | None) -> datetime | None:
     """Parse "DD-MMM-YYYY" (English-abbreviated month) at UTC midnight.
 
@@ -214,7 +186,6 @@ __all__ = [
     "KZ_TZ",
     "TASHKENT_TZ",
     "parse_dmy_month_name",
-    "parse_full_month_date",
     "parse_kz_local_datetime",
     "parse_kz_local_datetime_dmy",
     "parse_kzt_amount",

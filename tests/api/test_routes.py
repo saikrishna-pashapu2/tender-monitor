@@ -502,20 +502,6 @@ def test_detail_endpoint_renders_tendersinfo_source_layout(
     assert "Aggregator payload" in resp.text
 
 
-def test_detail_endpoint_renders_uzbekistan_tenders_source_layout(
-    client: TestClient,
-) -> None:
-    tender_id = _uzbekistan_tenders_tender_id(client)
-    resp = client.get(f"/tenders/{tender_id}")
-    assert resp.status_code == 200
-    assert "UzbekistanTenders Commercial Aggregator" in resp.text
-    assert "UZT Ref No. 86ddab7" in resp.text
-    assert "Finance and Related Services" in resp.text
-    assert "Central Bank of the Republic of Uzbekistan" in resp.text
-    assert "Provision of services for assigning an international credit rating" in resp.text
-    assert "JSON-LD detail" in resp.text
-
-
 def test_detail_endpoint_renders_related_sidebar(client: TestClient) -> None:
     # The seeded credit-rating tender lives on the goszakup source,
     # which has 6 total rows. The "More from goszakup" sidebar should
@@ -558,7 +544,7 @@ def test_api_tenders_response_shape(client: TestClient) -> None:
     resp = client.get("/api/tenders?per_page=5&matched=all")
     body = resp.json()
     assert set(body.keys()) >= {"tenders", "total", "page", "per_page", "pages"}
-    assert body["total"] == 19
+    assert body["total"] == 18
     assert body["per_page"] == 5
     assert body["pages"] == 4
     assert len(body["tenders"]) == 5
@@ -568,10 +554,10 @@ def test_api_tenders_response_shape(client: TestClient) -> None:
 
 def test_api_tenders_default_returns_matched_only(client: TestClient) -> None:
     # Without an explicit ``matched`` param the API hides unmatched
-    # tenders. 8 of 19 seeded rows have matched_groups.
+    # tenders. 7 of 18 seeded rows have matched_groups.
     resp = client.get("/api/tenders?per_page=100")
     body = resp.json()
-    assert body["total"] == 8
+    assert body["total"] == 7
     for entry in body["tenders"]:
         assert entry["matched_groups"], (
             "default API view should only return matched tenders, "
@@ -646,7 +632,6 @@ def test_api_sources_returns_list(client: TestClient) -> None:
         "national_bank",
         "samruk_kazyna",
         "tendersinfo",
-        "uzbekistan_tenders",
         "xt_xarid",
         "zakup_unified",
     }
@@ -746,16 +731,3 @@ def _tendersinfo_tender_id(client: TestClient) -> str:
         if entry["external_id"] == "532912293":
             return entry["id"]
     raise AssertionError("seeded tendersinfo tender 532912293 was not returned")
-
-
-def _uzbekistan_tenders_tender_id(client: TestClient) -> str:
-    resp = client.get(
-        "/api/tenders?source=uzbekistan_tenders&matched=all&per_page=100"
-    )
-    resp.raise_for_status()
-    for entry in resp.json()["tenders"]:
-        if entry["external_id"] == "86ddab7":
-            return entry["id"]
-    raise AssertionError(
-        "seeded uzbekistan_tenders tender 86ddab7 was not returned"
-    )

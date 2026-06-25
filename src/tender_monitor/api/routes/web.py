@@ -1399,97 +1399,6 @@ def _extract_tendersinfo_view(
     }
 
 
-def _extract_uzbekistan_tenders_view(
-    tender_raw_json: dict[str, Any],
-    *,
-    lots: list[dict[str, object]],
-) -> dict[str, object]:
-    listing_rows = _rows_from_keys(
-        tender_raw_json,
-        (
-            ("UZT reference", ("external_id",)),
-            ("Listing title", ("title",)),
-            ("Detail URL", ("detail_url",)),
-            ("Listing deadline", ("deadline_text",)),
-            ("Listing value", ("value_text",)),
-        ),
-    )
-    detail_rows = _rows_from_keys(
-        tender_raw_json,
-        (
-            ("Detail identifier", ("detail_identifier",)),
-            ("Published", ("published_text_detail",)),
-            ("Deadline", ("deadline_text_detail",)),
-            ("Category", ("detail_category",)),
-            ("Visible tender value", ("detail_value_text",)),
-            ("Detail price", ("detail_price",)),
-            ("Detail currency", ("detail_price_currency",)),
-            ("Meta description", ("detail_meta_description",)),
-            ("Detail description", ("detail_description",)),
-        ),
-    )
-    buyer_rows = _rows_from_keys(
-        tender_raw_json,
-        (
-            ("Buyer", ("buyer_name_detail",)),
-        ),
-    )
-
-    jsonld_raw = tender_raw_json.get("_detail_jsonld")
-    jsonld = jsonld_raw if isinstance(jsonld_raw, dict) else {}
-    offered_by_raw = jsonld.get("offeredBy")
-    offered_by = offered_by_raw if isinstance(offered_by_raw, dict) else {}
-    jsonld_flat = {
-        **jsonld,
-        "offeredBy.name": offered_by.get("name"),
-        "offeredBy.type": offered_by.get("@type"),
-    }
-    jsonld_rows = _rows_from_keys(
-        jsonld_flat,
-        (
-            ("Schema type", ("@type",)),
-            ("Identifier", ("identifier",)),
-            ("Availability starts", ("availabilityStarts",)),
-            ("Availability ends", ("availabilityEnds",)),
-            ("Category", ("category",)),
-            ("Price", ("price",)),
-            ("Currency", ("priceCurrency",)),
-            ("Offered by", ("offeredBy.name",)),
-            ("Offered by type", ("offeredBy.type",)),
-        ),
-    )
-
-    primary_lot = lots[0] if lots else {}
-    summary_rows = _rows_from_keys(
-        primary_lot,
-        (
-            ("Title", ("name_en", "name_ru", "name", "title")),
-            ("Description", ("description_en", "description_ru", "description")),
-        ),
-    )
-
-    return {
-        "reference_no": (
-            tender_raw_json.get("detail_identifier")
-            or tender_raw_json.get("external_id")
-        ),
-        "title": tender_raw_json.get("title"),
-        "buyer_name": tender_raw_json.get("buyer_name_detail"),
-        "category": tender_raw_json.get("detail_category"),
-        "value_text": tender_raw_json.get("value_text"),
-        "detail_value_text": tender_raw_json.get("detail_value_text"),
-        "detail_price": tender_raw_json.get("detail_price"),
-        "detail_price_currency": tender_raw_json.get("detail_price_currency"),
-        "listing_rows": listing_rows,
-        "detail_rows": detail_rows,
-        "buyer_rows": buyer_rows,
-        "summary_rows": summary_rows,
-        "jsonld_rows": jsonld_rows,
-        "jsonld": jsonld,
-        "lots": lots,
-    }
-
-
 @router.get("/", response_class=HTMLResponse)
 async def tender_list(
     request: Request,
@@ -1614,7 +1523,6 @@ async def _build_tender_detail_context(
     ets_tender_view: dict[str, object] | None = None
     xt_xarid_view: dict[str, object] | None = None
     tendersinfo_view: dict[str, object] | None = None
-    uzbekistan_tenders_view: dict[str, object] | None = None
     if isinstance(tender.raw_json, dict):
         documents = _extract_documents(tender.raw_json)
         raw_lots = tender.raw_json.get("_lots")
@@ -1673,11 +1581,6 @@ async def _build_tender_detail_context(
                 tender.raw_json,
                 lots=lots,
             )
-        if tender.source_name == "uzbekistan_tenders":
-            uzbekistan_tenders_view = _extract_uzbekistan_tenders_view(
-                tender.raw_json,
-                lots=lots,
-            )
         source_groups = _extract_source_groups(tender.raw_json)
         source_sections = _extract_source_sections(tender.raw_json)
 
@@ -1698,7 +1601,6 @@ async def _build_tender_detail_context(
         "ets_tender_view": ets_tender_view,
         "xt_xarid_view": xt_xarid_view,
         "tendersinfo_view": tendersinfo_view,
-        "uzbekistan_tenders_view": uzbekistan_tenders_view,
         "related": related,
         "team_members": team_members,
         "share_sent": share_sent,

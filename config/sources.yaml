@@ -69,9 +69,3 @@ sources:
     base_url: "https://www.tendersinfo.com"
     enabled: true
     schedule_minutes: 60
-  - name: uzbekistan_tenders
-    display_name: "UzbekistanTenders.com (commercial aggregator, UZ)"
-    country: UZ
-    base_url: "https://www.uzbekistantenders.com"
-    enabled: true
-    schedule_minutes: 60
