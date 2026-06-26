@@ -28,6 +28,15 @@ APP_DIR="${APP_DIR:-/opt/tender-monitor/app}"
 VENV_DIR="${VENV_DIR:-/opt/tender-monitor/venv}"
 DB_NAME="${DB_NAME:-tender_monitor}"
 DB_USER="${DB_USER:-tender}"
+EXTERNAL_DATABASE_URL="${DATABASE_URL:-}"
+USE_LOCAL_POSTGRES="${USE_LOCAL_POSTGRES:-}"
+if [[ -z "$USE_LOCAL_POSTGRES" ]]; then
+  if [[ -n "$EXTERNAL_DATABASE_URL" ]]; then
+    USE_LOCAL_POSTGRES=false
+  else
+    USE_LOCAL_POSTGRES=true
+  fi
+fi
 
 if [[ $EUID -ne 0 ]]; then
   echo "error: run with sudo" >&2
@@ -44,12 +53,17 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ----------------------------------------------------------------------
-echo "[1/7] apt: python3.11, postgresql"
+if [[ "$USE_LOCAL_POSTGRES" == "true" ]]; then
+  echo "[1/7] apt: python3.11, postgresql"
+else
+  echo "[1/7] apt: python3.11"
+fi
 apt-get update -y
-apt-get install -y \
-  python3.11 python3.11-venv python3-pip \
-  postgresql postgresql-contrib \
-  ca-certificates curl git
+APT_PACKAGES=(python3.11 python3.11-venv python3-pip ca-certificates curl git)
+if [[ "$USE_LOCAL_POSTGRES" == "true" ]]; then
+  APT_PACKAGES+=(postgresql postgresql-contrib)
+fi
+apt-get install -y "${APT_PACKAGES[@]}"
 
 # ----------------------------------------------------------------------
 echo "[2/7] create user: $APP_USER"
@@ -59,48 +73,48 @@ fi
 chown -R "$APP_USER:$APP_USER" "$(dirname "$APP_DIR")"
 
 # ----------------------------------------------------------------------
-echo "[3/7] postgres: role + database"
+if [[ "$USE_LOCAL_POSTGRES" == "true" ]]; then
+  echo "[3/7] postgres: local role + database"
 
-# Persist the generated password in a root-owned cache file so re-runs
-# always know what it is — the original bug was a brace-group scope
-# issue where DB_PASSWORD could be empty by the time the .env patcher
-# tried to use it, leaving DATABASE_URL with the .env.example
-# placeholder. Caching to disk makes both the re-run and the .env
-# patch fully deterministic.
-DB_PW_CACHE="${DB_PW_CACHE:-/etc/tender-monitor.dbpw}"
-if [[ -z "${DB_PASSWORD:-}" && -s "$DB_PW_CACHE" ]]; then
-  DB_PASSWORD="$(cat "$DB_PW_CACHE")"
-fi
-if [[ -z "${DB_PASSWORD:-}" ]]; then
-  DB_PASSWORD="$(openssl rand -hex 16)"
-  echo "  generated db password (cached at $DB_PW_CACHE): $DB_PASSWORD"
-fi
-umask 077
-printf '%s' "$DB_PASSWORD" > "$DB_PW_CACHE"
-chmod 600 "$DB_PW_CACHE"
+  # Persist the generated password in a root-owned cache file so re-runs
+  # always know what it is. Caching to disk makes both the re-run and the
+  # .env patch fully deterministic.
+  DB_PW_CACHE="${DB_PW_CACHE:-/etc/tender-monitor.dbpw}"
+  if [[ -z "${DB_PASSWORD:-}" && -s "$DB_PW_CACHE" ]]; then
+    DB_PASSWORD="$(cat "$DB_PW_CACHE")"
+  fi
+  if [[ -z "${DB_PASSWORD:-}" ]]; then
+    DB_PASSWORD="$(openssl rand -hex 16)"
+    echo "  generated db password (cached at $DB_PW_CACHE): $DB_PASSWORD"
+  fi
+  umask 077
+  printf '%s' "$DB_PASSWORD" > "$DB_PW_CACHE"
+  chmod 600 "$DB_PW_CACHE"
 
-if sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'" | grep -q 1; then
-  # Role exists — make sure its password matches the cache. Idempotent.
-  sudo -u postgres psql -c "ALTER USER $DB_USER WITH PASSWORD '$DB_PASSWORD'" >/dev/null
+  if sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'" | grep -q 1; then
+    # Role exists; make sure its password matches the cache. Idempotent.
+    sudo -u postgres psql -c "ALTER USER $DB_USER WITH PASSWORD '$DB_PASSWORD'" >/dev/null
+  else
+    sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASSWORD'"
+  fi
+
+  sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" | grep -q 1 || \
+    sudo -u postgres createdb -O "$DB_USER" "$DB_NAME"
+
+  # pgcrypto is required for gen_random_uuid() server defaults.
+  sudo -u postgres psql -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;" >/dev/null
+
+  # Detect the actual listening port. On Debian, if 5432 is already taken
+  # (eg. by Docker), initdb silently picks 5433.
+  DB_PORT="$(sudo -u postgres psql -tAc 'SHOW port' | tr -d '[:space:]')"
+  if [[ -z "$DB_PORT" ]]; then
+    DB_PORT=5432
+  fi
+  echo "  postgres listening on port $DB_PORT"
 else
-  sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASSWORD'"
+  echo "[3/7] postgres: external database"
+  echo "  USE_LOCAL_POSTGRES=false; local PostgreSQL setup skipped"
 fi
-
-sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" | grep -q 1 || \
-  sudo -u postgres createdb -O "$DB_USER" "$DB_NAME"
-
-# pgcrypto is required for gen_random_uuid() server defaults.
-sudo -u postgres psql -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;" >/dev/null
-
-# Detect the actual listening port. On Debian, if 5432 is already taken
-# (eg. by Docker), initdb silently picks 5433. Hard-coding 5432 in the
-# DATABASE_URL leaves us unable to connect even when everything else is
-# correct — exactly the bug we hit on Pi setup.
-DB_PORT="$(sudo -u postgres psql -tAc 'SHOW port' | tr -d '[:space:]')"
-if [[ -z "$DB_PORT" ]]; then
-  DB_PORT=5432
-fi
-echo "  postgres listening on port $DB_PORT"
 
 # ----------------------------------------------------------------------
 echo "[4/7] venv + pip install"
@@ -117,18 +131,51 @@ if [[ ! -f "$APP_DIR/.env" ]]; then
   echo "  wrote $APP_DIR/.env from .env.example"
 fi
 
-# Always force DATABASE_URL to the canonical value built from the
-# cached DB password. Safe to re-run; the line is overwritten in
-# place. This means a stale .env left over from a previous install# always gets healed.
-NEW_DB_URL="postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@127.0.0.1:${DB_PORT}/${DB_NAME}?ssl=disable"
-if grep -q "^DATABASE_URL=" "$APP_DIR/.env"; then
-  # POSIX sed escape on the URL: ``,`` is a rare separator that won't
-  # appear in any of these substrings.
-  sed -i "s,^DATABASE_URL=.*,DATABASE_URL=${NEW_DB_URL}," "$APP_DIR/.env"
+if [[ "$USE_LOCAL_POSTGRES" == "true" ]]; then
+  # Always force DATABASE_URL to the canonical local value built from
+  # the cached DB password. Safe to re-run; the line is overwritten.
+  NEW_DB_URL="postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@127.0.0.1:${DB_PORT}/${DB_NAME}?ssl=disable"
+  DB_LOG_URL="postgresql+asyncpg://${DB_USER}:<cached-password>@127.0.0.1:${DB_PORT}/${DB_NAME}?ssl=disable"
 else
-  printf '\nDATABASE_URL=%s\n' "$NEW_DB_URL" >> "$APP_DIR/.env"
+  if [[ -z "$EXTERNAL_DATABASE_URL" ]]; then
+    EXTERNAL_DATABASE_URL="$(grep -E '^DATABASE_URL=' "$APP_DIR/.env" | head -n 1 | cut -d= -f2- || true)"
+  fi
+  if [[ -z "$EXTERNAL_DATABASE_URL" || "$EXTERNAL_DATABASE_URL" == *"127.0.0.1"* || "$EXTERNAL_DATABASE_URL" == *"localhost"* ]]; then
+    echo "error: USE_LOCAL_POSTGRES=false requires DATABASE_URL to point at AWS RDS" >&2
+    exit 1
+  fi
+  NEW_DB_URL="$EXTERNAL_DATABASE_URL"
+  DB_LOG_URL="$(EXTERNAL_DATABASE_URL="$EXTERNAL_DATABASE_URL" python3.11 - <<'PY'
+import os
+from urllib.parse import urlsplit, urlunsplit
+
+url = os.environ["EXTERNAL_DATABASE_URL"]
+parts = urlsplit(url)
+host = parts.hostname or "<host>"
+port = f":{parts.port}" if parts.port else ""
+path = parts.path or ""
+print(urlunsplit((parts.scheme, f"<redacted>@{host}{port}", path, "", "")))
+PY
+)"
 fi
-echo "  DATABASE_URL set to postgresql+asyncpg://${DB_USER}:<cached-password>@127.0.0.1:${DB_PORT}/${DB_NAME}?ssl=disable"
+
+NEW_DB_URL="$NEW_DB_URL" python3.11 - "$APP_DIR/.env" <<'PY'
+import os
+import sys
+from pathlib import Path
+
+env_path = Path(sys.argv[1])
+new_line = f"DATABASE_URL={os.environ['NEW_DB_URL']}"
+lines = env_path.read_text(encoding="utf-8").splitlines()
+for index, line in enumerate(lines):
+    if line.startswith("DATABASE_URL="):
+        lines[index] = new_line
+        break
+else:
+    lines.append(new_line)
+env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PY
+echo "  DATABASE_URL set to $DB_LOG_URL"
 
 # Warn if SMTP fields are still blank — the notifier silently no-ops
 # without them and you'd find out only when nothing arrives.

@@ -72,11 +72,20 @@ def _env() -> Environment:
     return _email_env
 
 
+def _portal_tender_path(tender: Any) -> str:
+    groups = set(tender.matched_groups or [])
+    if "credit_rating" in groups and "esg" not in groups:
+        return "credit/tools/tenders"
+    return "esg/tools/tenders"
+
+
 def _email_context(*, tender: Any, app_base_url: str) -> dict[str, Any]:
-    detail_url = f"{app_base_url.rstrip('/')}/tenders/{tender.id}"
+    base_url = app_base_url.rstrip("/")
+    detail_url = f"{base_url}/{_portal_tender_path(tender)}/{tender.id}"
     return {
         "tender": tender,
         "detail_url": detail_url,
+        "settings_url": f"{base_url}/settings/recipients",
         "source_url": tender.source_url,
         "matched_groups": list(tender.matched_groups or []),
         "match_details": tender.match_details or {},

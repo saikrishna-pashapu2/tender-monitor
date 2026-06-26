@@ -9,6 +9,7 @@ from sqlalchemy import (
     ARRAY,
     Boolean,
     DateTime,
+    Enum as SAEnum,
     ForeignKey,
     Index,
     Integer,
@@ -18,7 +19,6 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -34,46 +34,58 @@ from tender_monitor.core.enums import (
     TenderStatus,
 )
 
-country_enum = PG_ENUM(
+country_enum = SAEnum(
     Country,
     name="country",
     values_callable=lambda enum: [member.value for member in enum],
-    create_type=True,
+    native_enum=False,
+    create_constraint=False,
+    length=2,
 )
-tender_status_enum = PG_ENUM(
+tender_status_enum = SAEnum(
     TenderStatus,
     name="tender_status",
     values_callable=lambda enum: [member.value for member in enum],
-    create_type=True,
+    native_enum=False,
+    create_constraint=False,
+    length=32,
 )
-language_enum = PG_ENUM(
+language_enum = SAEnum(
     Language,
     name="language",
     values_callable=lambda enum: [member.value for member in enum],
-    create_type=True,
+    native_enum=False,
+    create_constraint=False,
+    length=16,
 )
-feedback_verdict_enum = PG_ENUM(
+feedback_verdict_enum = SAEnum(
     FeedbackVerdict,
     name="feedback_verdict",
     values_callable=lambda enum: [member.value for member in enum],
-    create_type=True,
+    native_enum=False,
+    create_constraint=False,
+    length=32,
 )
-notification_channel_enum = PG_ENUM(
+notification_channel_enum = SAEnum(
     NotificationChannel,
     name="notification_channel",
     values_callable=lambda enum: [member.value for member in enum],
-    create_type=True,
+    native_enum=False,
+    create_constraint=False,
+    length=32,
 )
-notification_status_enum = PG_ENUM(
+notification_status_enum = SAEnum(
     NotificationStatus,
     name="notification_status",
     values_callable=lambda enum: [member.value for member in enum],
-    create_type=True,
+    native_enum=False,
+    create_constraint=False,
+    length=32,
 )
 
 
 class Source(Base):
-    __tablename__ = "sources"
+    __tablename__ = "monitored_tender_sources"
 
     name: Mapped[str] = mapped_column(String(64), primary_key=True)
     display_name: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -116,17 +128,17 @@ class Source(Base):
 
 
 class Tender(Base):
-    __tablename__ = "tenders"
+    __tablename__ = "monitored_tenders"
     __table_args__ = (
-        UniqueConstraint("source_name", "external_id", name="uq_tenders_source_external"),
-        Index("ix_tenders_source_name", "source_name"),
-        Index("ix_tenders_canonical_id", "canonical_id"),
-        Index("ix_tenders_country", "country"),
-        Index("ix_tenders_published_at", "published_at"),
-        Index("ix_tenders_deadline_at", "deadline_at"),
-        Index("ix_tenders_first_seen_at", "first_seen_at"),
-        Index("ix_tenders_matched_groups", "matched_groups", postgresql_using="gin"),
-        Index("ix_tenders_raw_json", "raw_json", postgresql_using="gin"),
+        UniqueConstraint("source_name", "external_id", name="uq_monitored_tenders_source_external"),
+        Index("idx_monitored_tenders_source_name", "source_name"),
+        Index("idx_monitored_tenders_canonical_id", "canonical_id"),
+        Index("idx_monitored_tenders_country", "country"),
+        Index("idx_monitored_tenders_published_at", "published_at"),
+        Index("idx_monitored_tenders_deadline_at", "deadline_at"),
+        Index("idx_monitored_tenders_first_seen_at", "first_seen_at"),
+        Index("idx_monitored_tenders_matched_groups", "matched_groups", postgresql_using="gin"),
+        Index("idx_monitored_tenders_raw_json", "raw_json", postgresql_using="gin"),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -135,13 +147,13 @@ class Tender(Base):
 
     source_name: Mapped[str] = mapped_column(
         String(64),
-        ForeignKey("sources.name", ondelete="RESTRICT", onupdate="CASCADE"),
+        ForeignKey("monitored_tender_sources.name", ondelete="RESTRICT", onupdate="CASCADE"),
         nullable=False,
     )
     external_id: Mapped[str] = mapped_column(String(256), nullable=False)
     canonical_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("tenders.id", ondelete="SET NULL"),
+        ForeignKey("monitored_tenders.id", ondelete="SET NULL"),
         nullable=True,
     )
 
@@ -221,15 +233,15 @@ class Tender(Base):
 
 
 class Feedback(Base):
-    __tablename__ = "feedback"
-    __table_args__ = (Index("ix_feedback_tender_id", "tender_id"),)
+    __tablename__ = "monitored_tender_feedback"
+    __table_args__ = (Index("idx_monitored_tender_feedback_tender_id", "tender_id"),)
 
     id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
     )
     tender_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("tenders.id", ondelete="CASCADE"),
+        ForeignKey("monitored_tenders.id", ondelete="CASCADE"),
         nullable=False,
     )
     verdict: Mapped[FeedbackVerdict] = mapped_column(feedback_verdict_enum, nullable=False)
@@ -243,10 +255,10 @@ class Feedback(Base):
 
 
 class NotificationLog(Base):
-    __tablename__ = "notification_logs"
+    __tablename__ = "monitored_notification_logs"
     __table_args__ = (
-        Index("ix_notification_logs_tender_id", "tender_id"),
-        Index("ix_notification_logs_sent_at", "sent_at"),
+        Index("idx_monitored_notification_logs_tender_id", "tender_id"),
+        Index("idx_monitored_notification_logs_sent_at", "sent_at"),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -254,7 +266,7 @@ class NotificationLog(Base):
     )
     tender_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("tenders.id", ondelete="CASCADE"),
+        ForeignKey("monitored_tenders.id", ondelete="CASCADE"),
         nullable=False,
     )
     channel: Mapped[NotificationChannel] = mapped_column(
@@ -282,10 +294,10 @@ class EmailRecipient(Base):
     tender's ``matched_groups`` intersects with their ``groups``.
     """
 
-    __tablename__ = "email_recipients"
+    __tablename__ = "monitored_email_recipients"
     __table_args__ = (
-        Index("ix_email_recipients_enabled", "enabled"),
-        Index("ix_email_recipients_team", "team"),
+        Index("idx_monitored_email_recipients_enabled", "enabled"),
+        Index("idx_monitored_email_recipients_team", "team"),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -314,14 +326,14 @@ class EmailRecipient(Base):
 class ShareContact(Base):
     """Saved one-off tender share recipient for a typed sender name."""
 
-    __tablename__ = "share_contacts"
+    __tablename__ = "monitored_share_contacts"
     __table_args__ = (
         UniqueConstraint(
             "sender_key",
             "email",
-            name="uq_share_contacts_sender_email",
+            name="uq_monitored_share_contacts_sender_email",
         ),
-        Index("ix_share_contacts_sender_key", "sender_key"),
+        Index("idx_monitored_share_contacts_sender_key", "sender_key"),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -350,11 +362,11 @@ class ShareContact(Base):
 class TeamMember(Base):
     """Internal teammate identity used by likes and share sender history."""
 
-    __tablename__ = "team_members"
+    __tablename__ = "monitored_team_members"
     __table_args__ = (
-        UniqueConstraint("member_key", name="uq_team_members_member_key"),
-        Index("ix_team_members_member_key", "member_key"),
-        Index("ix_team_members_last_used_at", "last_used_at"),
+        UniqueConstraint("member_key", name="uq_monitored_team_members_member_key"),
+        Index("idx_monitored_team_members_member_key", "member_key"),
+        Index("idx_monitored_team_members_last_used_at", "last_used_at"),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -388,16 +400,16 @@ class TeamMember(Base):
 class TenderLike(Base):
     """A single teammate's like on a tender."""
 
-    __tablename__ = "tender_likes"
+    __tablename__ = "monitored_tender_likes"
     __table_args__ = (
         UniqueConstraint(
             "tender_id",
             "team_member_id",
-            name="uq_tender_likes_tender_member",
+            name="uq_monitored_tender_likes_tender_member",
         ),
-        Index("ix_tender_likes_tender_id", "tender_id"),
-        Index("ix_tender_likes_team_member_id", "team_member_id"),
-        Index("ix_tender_likes_created_at", "created_at"),
+        Index("idx_monitored_tender_likes_tender_id", "tender_id"),
+        Index("idx_monitored_tender_likes_team_member_id", "team_member_id"),
+        Index("idx_monitored_tender_likes_created_at", "created_at"),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -405,12 +417,12 @@ class TenderLike(Base):
     )
     tender_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("tenders.id", ondelete="CASCADE"),
+        ForeignKey("monitored_tenders.id", ondelete="CASCADE"),
         nullable=False,
     )
     team_member_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("team_members.id", ondelete="CASCADE"),
+        ForeignKey("monitored_team_members.id", ondelete="CASCADE"),
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import AnyUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -72,6 +73,21 @@ class Settings(BaseSettings):
             raise ValueError(
                 "DATABASE_URL must be a postgresql+asyncpg:// or postgresql:// DSN"
             )
+        if value.startswith("postgresql://"):
+            value = "postgresql+asyncpg://" + value.removeprefix("postgresql://")
+        parts = urlsplit(value)
+        query = []
+        for key, item in parse_qsl(parts.query, keep_blank_values=True):
+            query.append(("ssl" if key == "sslmode" else key, item))
+        value = urlunsplit(
+            (
+                parts.scheme,
+                parts.netloc,
+                parts.path,
+                urlencode(query),
+                parts.fragment,
+            )
+        )
         return value
 
     @field_validator("usd_fx_rates", mode="before")

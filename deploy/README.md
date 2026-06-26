@@ -1,13 +1,15 @@
-# Deploying tender-monitor on a Raspberry Pi (4/5, USB-SSD, Tailscale)
+# Deploying tender-monitor
 
-This directory has everything the Pi needs: two systemd units and an
-idempotent install script.
+This directory has two systemd units and an idempotent install script.
+For production, point `DATABASE_URL` at the same AWS RDS database used
+by Portal. The local PostgreSQL path is kept only for small standalone
+installs.
 
 ## What runs where
 
 ```
 ┌─────────────────┐       DB-only       ┌──────────────────────┐
-│ scheduler.svc   │────────────────────▶│ PostgreSQL (local)   │
+│ scheduler.svc   │────────────────────▶│ AWS RDS PostgreSQL   │
 └─────────────────┘                     └──────────────────────┘
 ┌─────────────────┐                              ▲
 │   api.svc       │──────────────────────────────┘
@@ -19,9 +21,8 @@ idempotent install script.
 ```
 
 Two long-lived systemd services owned by an unprivileged `tender` user.
-PostgreSQL is local to the Pi (not exposed on the LAN). Tailscale is
-the only network-edge thing on the box and it handles access control
-for you — anyone not on your tailnet sees nothing.
+The app and scheduler should write to AWS RDS so Portal can read the
+same monitored tender tables.
 
 ## First boot
 
@@ -35,13 +36,13 @@ sudo mkdir -p /opt/tender-monitor
 sudo chown -R "$USER" /opt/tender-monitor
 git clone <your-repo-url> /opt/tender-monitor/app
 
-# 2. Install everything (creates user, DB, venv, services)
-sudo bash /opt/tender-monitor/app/deploy/install.sh
+# 2. Install everything against AWS RDS (venv, migrations, services)
+export DATABASE_URL='postgresql+asyncpg://USER:PASSWORD@RDS_ENDPOINT:5432/postgres?ssl=require'
+sudo -E USE_LOCAL_POSTGRES=false bash /opt/tender-monitor/app/deploy/install.sh
 
 # 3. Edit secrets the installer stubbed for you
 sudo -e /opt/tender-monitor/app/.env
-#   - DATABASE_URL (already filled in if the installer generated a password;
-#     local Pi installs use 127.0.0.1 + ssl=disable on purpose)
+#   - DATABASE_URL should stay pointed at AWS RDS
 #   - SMTP_HOST / SMTP_USER / SMTP_PASSWORD / SMTP_FROM  (Gmail app password)
 #   - APP_BASE_URL = http://<your-tailscale-hostname>:8000
 

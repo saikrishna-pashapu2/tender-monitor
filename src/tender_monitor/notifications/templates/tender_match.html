@@ -124,8 +124,8 @@
                 <strong>{{ matched_groups|join(', ') }}</strong>
                 tender notification{{ 's' if matched_groups|length > 1 else '' }}.
                 Manage subscriptions at
-                <a href="{{ detail_url.split('/tenders/')[0] }}/settings/recipients" style="color:#1d4ed8;">
-                  {{ detail_url.split('/tenders/')[0] }}/settings/recipients
+                <a href="{{ settings_url }}" style="color:#1d4ed8;">
+                  {{ settings_url }}
                 </a>.
               </td>
             </tr>

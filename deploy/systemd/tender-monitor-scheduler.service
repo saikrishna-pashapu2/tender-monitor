@@ -1,9 +1,8 @@
 [Unit]
 Description=Tender Monitor — connector scheduler (APScheduler, runs ingest jobs per source)
 Documentation=https://github.com/your-org/tender-monitor
-After=network-online.target postgresql.service
+After=network-online.target
 Wants=network-online.target
-Requires=postgresql.service
 
 [Service]
 Type=simple
