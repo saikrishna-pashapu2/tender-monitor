@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import ssl
 from collections.abc import Awaitable, Callable
 from typing import ParamSpec, TypeVar
 
@@ -28,6 +29,7 @@ def make_client(
     connect_timeout: float = 10.0,
     headers: dict[str, str] | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
+    verify: str | ssl.SSLContext | None = None,
 ) -> httpx.AsyncClient:
     """Return a configured httpx.AsyncClient.
 
@@ -42,11 +44,16 @@ def make_client(
     if headers:
         merged_headers.update(headers)
 
+    kwargs: dict[str, object] = {}
+    if verify is not None:
+        kwargs["verify"] = verify
+
     return httpx.AsyncClient(
         timeout=httpx.Timeout(timeout, connect=connect_timeout),
         follow_redirects=True,
         headers=merged_headers,
         transport=transport,
+        **kwargs,
     )
 
 

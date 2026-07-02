@@ -10,6 +10,10 @@ User=tender
 Group=tender
 WorkingDirectory=/opt/tender-monitor/app
 ExecStart=/opt/tender-monitor/venv/bin/python -m tender_monitor.cli run-api --host 0.0.0.0 --port 8000
+Environment=HOME=/tmp
+Environment=PGSSLROOTCERT=/etc/ssl/certs/ca-certificates.crt
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/tender-monitor/ms-playwright
+Environment=ETS_TENDER_CA_BUNDLE=/opt/tender-monitor/certs/ets-tender-ca-bundle.pem
 
 # Pydantic-settings reads .env from WorkingDirectory; no EnvironmentFile needed.
 # .env must be chmod 600, owned by `tender`, never committed.

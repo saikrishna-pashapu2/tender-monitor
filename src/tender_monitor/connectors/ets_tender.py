@@ -36,6 +36,8 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from os import environ
+from pathlib import Path
 from typing import Any, ClassVar
 
 import httpx
@@ -367,6 +369,9 @@ class EtsTenderConnector(Connector):
     def _make_client(self) -> httpx.AsyncClient:
         if self._http_client_factory is not None:
             return self._http_client_factory()
+        ca_bundle = environ.get("ETS_TENDER_CA_BUNDLE")
+        if ca_bundle and Path(ca_bundle).is_file():
+            return make_client(headers=self.REQUIRED_HEADERS, verify=ca_bundle)
         return make_client(headers=self.REQUIRED_HEADERS)
 
     @with_retry(max_attempts=3)

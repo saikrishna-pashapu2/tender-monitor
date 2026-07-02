@@ -49,6 +49,7 @@ class Runner:
     def __init__(self) -> None:
         self.scheduler = AsyncIOScheduler(timezone=UTC)
         self.shutdown_event: asyncio.Event | None = None
+        self._active_jobs: set[asyncio.Task[None]] = set()
 
     async def _load_enabled_sources(self) -> list[Source]:
         async with async_session_factory() as session:
@@ -56,6 +57,19 @@ class Runner:
                 select(Source).where(Source.enabled.is_(True))
             )
             return list(result.scalars().all())
+
+    async def _run_job(self, source_name: str) -> None:
+        task = asyncio.current_task()
+        if task is not None:
+            self._active_jobs.add(task)
+        try:
+            await _job(source_name)
+        except asyncio.CancelledError:
+            logger.info("scheduler.job.cancelled", source=source_name)
+            raise
+        finally:
+            if task is not None:
+                self._active_jobs.discard(task)
 
     async def start(self) -> None:
         sources = await self._load_enabled_sources()
@@ -66,7 +80,7 @@ class Runner:
         job_specs: list[tuple[str, int]] = []
         for source in sources:
             self.scheduler.add_job(
-                _job,
+                self._run_job,
                 args=[source.name],
                 trigger=IntervalTrigger(minutes=source.schedule_minutes),
                 id=f"ingest:{source.name}",
@@ -84,9 +98,19 @@ class Runner:
         )
 
     async def stop(self) -> None:
-        # wait=True lets in-flight ingests finish; we accept a few extra
-        # seconds at shutdown to avoid leaving the DB in a half-state.
-        self.scheduler.shutdown(wait=True)
+        # APScheduler's AsyncIOExecutor cannot honor shutdown(wait=True):
+        # it cancels pending coroutine futures. Pause first, drain the
+        # tasks we own, then shut down the scheduler with no active jobs.
+        self.scheduler.pause()
+        await asyncio.sleep(0)
+        if self._active_jobs:
+            logger.info(
+                "scheduler.stop.waiting_for_jobs",
+                active_jobs=len(self._active_jobs),
+            )
+        while self._active_jobs:
+            await asyncio.gather(*self._active_jobs, return_exceptions=True)
+        self.scheduler.shutdown(wait=False)
         logger.info("scheduler.stop")
 
     def _install_signal_handlers(self) -> None:

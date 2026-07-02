@@ -9,13 +9,13 @@ sources:
     country: KZ
     base_url: "https://zakup.gov.kz"
     enabled: true
-    schedule_minutes: 30
+    schedule_minutes: 60
   - name: goszakup
     display_name: "Public Procurement Web Portal (goszakup.gov.kz)"
     country: KZ
     base_url: "https://goszakup.gov.kz"
     enabled: true
-    schedule_minutes: 30
+    schedule_minutes: 60
   # samruk_kazyna runs through a headless Chromium (Playwright) because
   # the gateway requires a per-URL `tor` HMAC minted by the site's JS
   # interceptor. Requires `playwright install chromium` once on the
@@ -27,34 +27,34 @@ sources:
     country: KZ
     base_url: "https://zakup.sk.kz"
     enabled: true
-    schedule_minutes: 30
+    schedule_minutes: 60
   - name: mitwork
     display_name: "Eurasian Electronic Portal (eep.mitwork.kz)"
     country: KZ
     base_url: "https://eep.mitwork.kz"
     enabled: true
-    schedule_minutes: 30
+    schedule_minutes: 60
   - name: national_bank
     display_name: "National Bank of Kazakhstan Procurement Portal"
     country: KZ
     base_url: "https://zakup.nationalbank.kz"
     enabled: true
-    schedule_minutes: 30
+    schedule_minutes: 60
   - name: ets_tender
     display_name: "ETS-Tender (commercial procurement, ets-tender.kz)"
     country: KZ
     base_url: "https://www.ets-tender.kz"
     enabled: true
-    schedule_minutes: 30
+    schedule_minutes: 60
   - name: uzex_etender
     display_name: "UZEX e-Tender platform (etender.uzex.uz)"
     country: UZ
     base_url: "https://etender.uzex.uz"
     enabled: true
-    schedule_minutes: 30
+    schedule_minutes: 60
   - name: xt_xarid
     display_name: "XT-Xarid Public Procurement (xt-xarid.uz)"
     country: UZ
     base_url: "https://xt-xarid.uz"
     enabled: true
-    schedule_minutes: 30
+    schedule_minutes: 60

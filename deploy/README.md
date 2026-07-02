@@ -87,14 +87,15 @@ sudo journalctl -u tender-monitor-scheduler | grep "scheduler.ingest.failed"
 ```bash
 cd /opt/tender-monitor/app
 sudo -u tender git pull
-sudo bash deploy/install.sh        # idempotent: re-pip-installs + re-migrates + restarts
+sudo USE_LOCAL_POSTGRES=false bash deploy/install.sh
+# idempotent: re-pip-installs + re-migrates + restarts, preserving AWS RDS
 ```
 
 ### Restart / stop
 
 ```bash
 sudo systemctl restart tender-monitor-api
-sudo systemctl stop tender-monitor-scheduler          # gives running ingests 60s to drain
+sudo systemctl stop tender-monitor-scheduler          # gives running ingests up to 15m to drain
 sudo systemctl status tender-monitor-scheduler
 ```
 

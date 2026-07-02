@@ -10,12 +10,16 @@ User=tender
 Group=tender
 WorkingDirectory=/opt/tender-monitor/app
 ExecStart=/opt/tender-monitor/venv/bin/python -m tender_monitor.cli run-scheduler
+Environment=HOME=/tmp
+Environment=PGSSLROOTCERT=/etc/ssl/certs/ca-certificates.crt
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/tender-monitor/ms-playwright
+Environment=ETS_TENDER_CA_BUNDLE=/opt/tender-monitor/certs/ets-tender-ca-bundle.pem
 
 Restart=on-failure
 RestartSec=10
 # Give in-flight ingests time to finish so the DB doesn't end up in a half state.
-# 60s is generous — covers a slow national_bank detail-page fetch with margin.
-TimeoutStopSec=60
+# First-run/backfill detail fetches can take several minutes on large sources.
+TimeoutStopSec=900
 KillSignal=SIGINT
 
 StandardOutput=journal
